@@ -5,7 +5,15 @@ et par la résolution d'identifiant en direct (pipeline.py).
 Chargée une fois en mémoire au premier accès (singleton module), comme
 models/anomalie.py charge son artefact une fois — c'est un fichier de ~94 Mo,
 pas quelque chose à relire à chaque requête.
-"""
+
+BUNDLED_PATH (un snapshot déjà filtré aux 4 colonnes utiles, committé dans le
+repo) est essayé en premier, avant tout téléchargement : servir une requête
+en dépend en direct (get_typecode/get_registration/is_helicopter), donc
+attendre un fetch de 94 Mo — voire échouer dessus — au milieu d'une réponse
+HTTP n'est pas acceptable. Observé en prod (Render) : timeout de connexion
+vers opensky-network.org, 500 sur le premier appel touchant la base. Le
+téléchargement live reste le repli pour un poste de dev qui n'a pas encore
+généré le snapshot (voir son commentaire dans .gitignore)."""
 
 from pathlib import Path
 
@@ -20,6 +28,7 @@ REFERENCE_DIR = BACKEND_DIR.parent / "data" / "reference"
 
 AIRCRAFT_DB_URL = "https://opensky-network.org/datasets/metadata/aircraftDatabase.csv"
 AIRCRAFT_DB_CACHE = REFERENCE_DIR / "aircraft_database.csv"
+BUNDLED_PATH = REFERENCE_DIR / "aircraft_database_trimmed.parquet"
 
 _aircraft_db: pd.DataFrame | None = None
 
@@ -35,6 +44,8 @@ def download_if_missing(url: str, cache_path: Path) -> Path:
 
 
 def load_aircraft_database() -> pd.DataFrame:
+    if BUNDLED_PATH.exists():
+        return pd.read_parquet(BUNDLED_PATH)
     path = download_if_missing(AIRCRAFT_DB_URL, AIRCRAFT_DB_CACHE)
     aircraft = pd.read_csv(
         path,
