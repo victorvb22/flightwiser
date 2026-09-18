@@ -1,0 +1,134 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+  /* Thème sombre assumé comme identité du produit (pas un mode parmi
+     d'autres) — fond quasi-noir, vert/rouge comme langage sémantique
+     central (normal/anomalie), cohérent sur toute l'app. */
+  --bg: #050607;
+  --surface: #0d0f11;
+  --surface-2: #14171a;
+  --surface-3: #1c2024;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --text: #f2f4f5;
+  --text-muted: #9aa1a8;
+  --text-faint: #5c6369;
+
+  /* Vert = normal/conforme, rouge = anomalie/écart marqué — les deux pôles
+     sémantiques centraux de l'app, pas de simples "couleurs de statut"
+     parmi d'autres. L'ambre sert d'étape intermédiaire dans le dégradé
+     continu (voir lib/severity.ts), jamais utilisé seul. */
+  --green: #2fe6a4;
+  --green-dim: #123329;
+  --amber: #f5b942;
+  --red: #ff5a67;
+  --red-dim: #3a1418;
+  /* Airborne/Landed distinction (dropdown, filter label) — a third hue,
+     not reused from the anomaly severity gradient, since it's a status
+     pairing rather than a normal/anomaly reading. */
+  --blue: #4da8ff;
+  --blue-dim: #0f2540;
+
+  --accent: var(--green);
+
+  font: 16.5px/1.6 "Inter", system-ui, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--green);
+}
+
+::selection {
+  background: var(--green);
+  color: #04110c;
+}
+
+/* fine scanline/grid texture, très discrète — évoque un écran radar sans
+   verser dans le pastiche */
+.radar-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 880px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.random-menu-item:hover {
+  background: var(--surface-3);
+}
+
+.search-input {
+  border: 1px solid var(--border-strong);
+}
+
+.search-input:focus {
+  outline: none;
+  /* Same opacity as the Random flight button's ghost border, not solid
+     --green. */
+  border-color: rgba(47, 230, 164, 0.45);
+}
+
+.anomaly-feature-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.anomaly-feature-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.anomaly-feature-chip:hover .anomaly-feature-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
