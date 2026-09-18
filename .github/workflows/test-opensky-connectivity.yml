@@ -1,0 +1,24 @@
+name: Test OpenSky connectivity from GitHub Actions runner
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/test-opensky-connectivity.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show runner IP/ASN
+        run: curl -s https://ipinfo.io/json || true
+
+      - name: Test opensky-network.org (main API host)
+        run: |
+          echo "Connecting to opensky-network.org..."
+          time curl -sv -o /dev/null -w "HTTP_CODE:%{http_code} TIME:%{time_total}s\n" --max-time 20 https://opensky-network.org/ || echo "FAILED (exit $?)"
+
+      - name: Test auth.opensky-network.org (token endpoint)
+        run: |
+          echo "Connecting to auth.opensky-network.org..."
+          time curl -sv -o /dev/null -w "HTTP_CODE:%{http_code} TIME:%{time_total}s\n" --max-time 20 -X POST https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token || echo "FAILED (exit $?)"
