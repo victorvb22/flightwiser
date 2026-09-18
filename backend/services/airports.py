@@ -21,6 +21,11 @@ REFERENCE_DIR = BACKEND_DIR.parent / "data" / "reference"
 
 AIRPORTS_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 AIRPORTS_CACHE = REFERENCE_DIR / "airports.csv"
+# Snapshot déjà filtré/traité, committé dans le repo — même raison que
+# aircraft_database.BUNDLED_PATH : find_nearest_airport_info tourne sur
+# chaque résultat de recherche, un fetch (ou un timeout) réseau en direct
+# n'a pas sa place dans ce chemin.
+BUNDLED_PATH = REFERENCE_DIR / "airports_trimmed.parquet"
 
 DEFAULT_MAX_KM = 5.0
 
@@ -28,6 +33,8 @@ _airports: pd.DataFrame | None = None
 
 
 def load_airports() -> pd.DataFrame:
+    if BUNDLED_PATH.exists():
+        return pd.read_parquet(BUNDLED_PATH)
     path = download_if_missing(AIRPORTS_URL, AIRPORTS_CACHE)
     airports = pd.read_csv(
         path,
