@@ -48,6 +48,11 @@ body {
   margin: 0;
   background: var(--bg);
   min-height: 100vh;
+  /* Every component here is sized in raw px (no rem-based scaling), so a
+     root font-size tweak wouldn't shrink padding/icons/gaps the way actual
+     browser zoom does — `zoom` reproduces that exactly, uniformly, without
+     needing to touch every component's dimensions individually. */
+  zoom: 0.75;
 }
 
 #root {
