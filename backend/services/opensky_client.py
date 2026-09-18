@@ -41,7 +41,30 @@ from config import settings
 logger = logging.getLogger("opensky_api")
 logger.addHandler(logging.NullHandler())
 
-TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
+_DIRECT_AUTH_HOST = "https://auth.opensky-network.org"
+_DIRECT_API_URL = "https://opensky-network.org/api"
+
+# Routed through a Cloudflare Worker relay when OPENSKY_RELAY_URL is set
+# (config.py) — see its comment there for why. The relay exposes two fixed
+# prefixes (/relay-auth, /relay-api) that map 1:1 onto OpenSky's own two
+# hosts; going direct (both empty/unset, the default for local dev) hits
+# OpenSky exactly as this client always did.
+if settings.opensky_relay_url:
+    TOKEN_URL = f"{settings.opensky_relay_url}/relay-auth/auth/realms/opensky-network/protocol/openid-connect/token"
+    _API_URL = f"{settings.opensky_relay_url}/relay-api/api"
+else:
+    TOKEN_URL = f"{_DIRECT_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token"
+    _API_URL = _DIRECT_API_URL
+
+
+def _relay_headers() -> dict:
+    """Empty when going direct — the relay ignores/never sees this header
+    either way, but no reason to send a secret to a host that isn't ours."""
+    if settings.opensky_relay_url and settings.opensky_relay_secret:
+        return {"X-Relay-Secret": settings.opensky_relay_secret}
+    return {}
+
+
 # Refresh the token this many seconds before it actually expires to avoid
 # race conditions on long-running requests.
 TOKEN_REFRESH_MARGIN = 30
@@ -99,6 +122,7 @@ class TokenManager:
                 "client_id": self._client_id,
                 "client_secret": self._client_secret,
             },
+            headers=_relay_headers(),
             timeout=15.0,
         )
         r.raise_for_status()
@@ -406,9 +430,10 @@ class OpenSkyApi:
         else:
             self._token_manager = None
 
-        self._api_url = "https://opensky-network.org/api"
+        self._api_url = _API_URL
         self._last_requests = defaultdict(lambda: 0)
         self._session = requests.Session()
+        self._session.headers.update(_relay_headers())
 
     @classmethod
     def from_settings(cls) -> "OpenSkyApi":

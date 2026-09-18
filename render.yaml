@@ -12,6 +12,12 @@ services:
         sync: false
       - key: OPENSKY_CLIENT_SECRET
         sync: false
+      # Cloudflare Worker relay (cloudflare-relay/worker.js) — Render's
+      # outbound network can't reach opensky-network.org directly.
+      - key: OPENSKY_RELAY_URL
+        sync: false
+      - key: OPENSKY_RELAY_SECRET
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
