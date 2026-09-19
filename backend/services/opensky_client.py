@@ -23,8 +23,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # ---------------------------------------------------------------------------
-# Flightwiser: this is the SEUL point de contact avec OpenSky (brief section 6).
-# Aucun autre module ne doit appeler l'API OpenSky directement.
+# Flightwiser: this is the ONLY point of contact with OpenSky (brief section 6).
+# No other module should call the OpenSky API directly.
 # ---------------------------------------------------------------------------
 import calendar
 import json

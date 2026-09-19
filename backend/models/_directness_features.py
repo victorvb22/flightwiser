@@ -1,28 +1,27 @@
-"""Extraction de la feature "trajet direct" (brief section 11, extension) :
-distance grand-cercle entre les extrémités réelles de la trajectoire,
-divisée par la distance effectivement parcourue le long du chemin — un
-signal qu'aucun des deux modèles existants ne voit. Le modèle d'anomalie
-(models/_anomalie_features.py) ne regarde que des features résumées
-scalaires (vitesse/altitude/taux de montée), aveugle à la FORME du trajet ;
-le modèle d'écart (models/_ecart_features.py) compare le profil altitude/
-vitesse par phase à une simulation OpenAP, pas le routage latéral. Un vol
-qui tourne en rond, dévie largement ou subit un vectorage ATC prolongé peut
-donc passer inaperçu des deux, sans que sa vitesse ou son altitude sortent
-jamais de l'ordinaire.
+"""Extracting the "direct route" feature (brief section 11, an extension):
+great-circle distance between the trajectory's real endpoints, divided by
+the distance actually flown along the path — a signal neither existing
+model sees. The anomaly model (models/_anomalie_features.py) only looks at
+scalar summary features (speed/altitude/climb rate), blind to the route's
+SHAPE; the deviation model (models/_ecart_features.py) compares the
+altitude/speed profile per phase against an OpenAP simulation, not lateral
+routing. A flight that circles, deviates widely, or undergoes extended ATC
+vectoring can therefore go unnoticed by both, without its speed or altitude
+ever looking unusual.
 
-Ratio borné par construction (une ligne droite est le plus court chemin
-possible sur une sphère) : proche de 1 pour un trajet direct, plus bas pour
-un détour. Partagé entre l'entraînement (scripts/train_directness.py) et le
-service (models/directness.py) pour éviter tout écart train/serve, comme
-_anomalie_features.py pour son propre modèle.
+Ratio bounded by construction (a straight line is the shortest possible path
+on a sphere): close to 1 for a direct route, lower for a detour. Shared
+between training (scripts/train_directness.py) and serving
+(models/directness.py) to avoid any train/serve mismatch, same as
+_anomalie_features.py does for its own model.
 """
 
 import numpy as np
 
 MIN_POINTS = 5
-# En dessous de cette distance grand-cercle, le ratio est dominé par le
-# bruit de position ADS-B plutôt que par un vrai détour (un aller-retour
-# local ou un touch-and-go n'a pas vraiment de "trajet direct" à mesurer).
+# Below this great-circle distance, the ratio is dominated by ADS-B position
+# noise rather than a real detour (a local there-and-back or a touch-and-go
+# doesn't really have a "direct route" to measure).
 MIN_GREAT_CIRCLE_KM = 5.0
 EARTH_RADIUS_KM = 6371.0
 
@@ -36,10 +35,10 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def extract_route_directness(waypoints: list[dict]) -> float | None:
-    """None si trop peu de points, ou si la distance grand-cercle est trop
-    courte pour un ratio fiable (cf. MIN_GREAT_CIRCLE_KM) — pas une erreur
-    en soi, juste un vol pour lequel ce signal particulier n'est pas
-    exploitable (les autres modèles restent indépendants de celui-ci)."""
+    """None if too few points, or if the great-circle distance is too short
+    for a reliable ratio (cf. MIN_GREAT_CIRCLE_KM) — not an error in itself,
+    just a flight for which this particular signal isn't usable (the other
+    models stay independent of this one)."""
     if len(waypoints) < MIN_POINTS:
         return None
 
@@ -54,9 +53,8 @@ def extract_route_directness(waypoints: list[dict]) -> float | None:
     if flown_km <= 0:
         return None
 
-    # Plafonné à 1.0 : le bruit de position ADS-B peut pousser le ratio
-    # marginalement au-dessus (une ligne droite est le plus court chemin
-    # *théorique*, pas une garantie point par point sur des mesures
-    # bruitées) — 1.0 reste la meilleure valeur possible, jamais dépassée
-    # en pratique de façon significative.
+    # Capped at 1.0: ADS-B position noise can push the ratio marginally
+    # above it (a straight line is the *theoretical* shortest path, not a
+    # point-by-point guarantee on noisy measurements) — 1.0 remains the best
+    # possible value, never meaningfully exceeded in practice.
     return min(1.0, great_circle_km / flown_km)
