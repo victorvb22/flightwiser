@@ -301,7 +301,10 @@ function MetaTile({
             so the tile's internal layout doesn't shift with the value's
             length the way it would if the unit were part of the animated
             string. */}
-        <div style={{ whiteSpace: "nowrap" }}>
+        {/* Phone widths: nudged right by 3px. The size formula below
+            already budgets for it (its constant is 0.87px lower than the
+            widest-fit value it would otherwise be), so nothing clips. */}
+        <div style={{ whiteSpace: "nowrap", paddingLeft: isMobile ? 3 : 0 }}>
           <SplitFlapText
             text={value}
             tickMs={90}
@@ -316,7 +319,7 @@ function MetaTile({
               // fits a tile's inner width at that screen width, so it
               // grows on wider phones instead of staying pinned to the
               // narrowest one. Floor/ceiling keep it sane at the extremes.
-              fontSize: isMobile ? "clamp(11px, calc(4.63vw - 4.63px), 15px)" : 18,
+              fontSize: isMobile ? "clamp(11px, calc(4.63vw - 5.5px), 15px)" : 18,
               fontWeight: 700,
               color: "#fff",
               whiteSpace: "nowrap",
