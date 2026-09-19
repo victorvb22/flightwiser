@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import { SplitFlapText } from "../components/SplitFlapText";
-import { ApiError, getAnomalieModelParams, type AnomalieCategoryParams } from "../services/api";
+import { useIsMobile } from "../lib/useIsMobile";
+import { useAppData } from "../lib/AppDataContext";
+import type { AnomalieCategoryParams } from "../services/api";
 
 const cardStyle: React.CSSProperties = {
   border: "1px solid var(--border)",
@@ -26,6 +28,7 @@ const pStyle: React.CSSProperties = {
   fontSize: 14.5,
   lineHeight: 1.7,
   margin: "0 0 12px",
+  textAlign: "justify",
 };
 
 const codeStyle: React.CSSProperties = {
@@ -37,13 +40,14 @@ const codeStyle: React.CSSProperties = {
   color: "var(--text)",
 };
 
-// Internal category keys mapped to the English labels shown here. Anomaly-
-// model-specific: "helicoptere" only exists for that model (cf.
-// models/_anomalie_features.categorize) — the trajectory-deviation and
-// route-directness models still use the two-way split from
-// services/aircraft_category.py.
+// Internal category keys mapped to the English labels shown here. All four
+// come from services/aircraft_category.py's table (typecode -> category) —
+// the anomaly model trains on all four; the trajectory-deviation and
+// route-directness models still use the two-way split (jet_affaire and
+// helicoptere fold into petit_avion for those, cf. categorize_two_way).
 const CATEGORY_LABELS: Record<string, string> = {
   avion_ligne: "Airliner",
+  jet_affaire: "Business jet",
   petit_avion: "Small aircraft",
   helicoptere: "Helicopter",
 };
@@ -246,19 +250,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function Documentation() {
-  const [anomalieParams, setAnomalieParams] = useState<Record<string, AnomalieCategoryParams> | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  // Cached above the router (lib/AppDataContext.tsx) — same reasoning as
+  // VueAgregee.tsx: a revisit shows the last-known values immediately
+  // instead of the page going blank and refetching every time, while this
+  // component itself still fully unmounts/remounts on navigation as
+  // before, so nothing here needed to change for that.
+  const { anomalieParams: anomalieParamsState, refreshAnomalieParams } = useAppData();
+  const anomalieParams = anomalieParamsState.params;
+  const loadError = anomalieParamsState.error;
 
   useEffect(() => {
-    getAnomalieModelParams()
-      .then(setAnomalieParams)
-      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Unexpected error"));
-  }, []);
+    refreshAnomalieParams();
+  }, [refreshAnomalieParams]);
 
-  // Anomaly-model category order — this model alone splits helicopters out
+  // Anomaly-model category order — this model alone trains on all four
   // (cf. CATEGORY_LABELS comment above); the deviation/directness sections
   // further down use their own, unrelated two-category numbers.
-  const categoryOrder = ["avion_ligne", "petit_avion", "helicoptere"];
+  const categoryOrder = ["avion_ligne", "jet_affaire", "petit_avion", "helicoptere"];
 
   return (
     <div>
@@ -271,9 +280,26 @@ export function Documentation() {
 
       <Section title="Architecture">
         <p style={pStyle}>
-          FastAPI backend, React/TypeScript frontend, Supabase (PostgREST) for caching and the search history's source data. A search resolves an
-          identifier to an ICAO24 address, fetches the live trajectory from the OpenSky Network, then runs it through three independent diagnostic
-          models. Results are cached per aircraft/day so repeat lookups don't re-fetch or re-score.
+          FastAPI backend on Render, React/TypeScript frontend on Vercel, Supabase (PostgREST) for caching and the search history's source data. A
+          search resolves an identifier to a pre-recorded real flight, runs it through three independent diagnostic models, then caches the result
+          per aircraft/day so repeat lookups don't re-score. See <strong style={{ color: "var(--text)" }}>Limitations</strong> below for why flights
+          come from a pre-recorded pool rather than a live OpenSky call.
+        </p>
+      </Section>
+
+      <Section title="Limitations">
+        <p style={pStyle}>
+          The original design resolved an identifier straight to an ICAO24 address and fetched its trajectory live from the OpenSky Network on every
+          search — no pool, no pre-recording. That worked from a local machine, but OpenSky blocks outbound requests from the shared, dynamic IP
+          ranges of small cloud platforms as an anti-abuse measure — confirmed directly against Render, Railway, and a Cloudflare Worker relay, all
+          blocked at the network level, while the same calls succeeded cleanly from GitHub Actions (a large, well-managed host OpenSky doesn't flag).
+        </p>
+        <p style={pStyle}>
+          Rather than keep fighting a block outside this project's control, live search was replaced with a pool of real flights collected in
+          advance from a reachable machine, using the exact same fetch-and-score code path a live search would have used — so each pooled flight is
+          identical in shape and content to what a live call would have returned, just recorded ahead of time instead of on demand. A search now
+          draws from this pool instead of OpenSky directly; once a flight has been served, it's marked as such (persisted in Supabase) so a random
+          draw never repeats it.
         </p>
       </Section>
 
@@ -289,26 +315,30 @@ export function Documentation() {
           enough great-circle distance for route directness).
         </p>
         <p style={pStyle}>
-          Every flight is split into categories before either model sees it — internally <code style={codeStyle}>avion_ligne</code> /{" "}
-          <code style={codeStyle}>petit_avion</code>, shown here as <strong style={{ color: "var(--text)" }}>Airliner</strong> and{" "}
-          <strong style={{ color: "var(--text)" }}>Small aircraft</strong> (business jet, general aviation) — because a single shared distribution
-          systematically penalises whichever group is a minority in the data. The split reuses OpenAP's own supported-aircraft list (it only models
-          airliners and a handful of regional/business jets) rather than maintaining a separate one.
+          Every flight is split into categories before any model sees it — internally <code style={codeStyle}>avion_ligne</code>,{" "}
+          <code style={codeStyle}>jet_affaire</code>, and <code style={codeStyle}>petit_avion</code>, shown here as{" "}
+          <strong style={{ color: "var(--text)" }}>Airliner</strong>, <strong style={{ color: "var(--text)" }}>Business jet</strong>, and{" "}
+          <strong style={{ color: "var(--text)" }}>Small aircraft</strong> (flight school, touring, ULM) — because a single shared distribution
+          systematically penalises whichever group is a minority in the data. The boundary is a lookup table (typecode → category), not OpenAP's own
+          supported-aircraft list as an earlier version used: OpenAP's coverage is built for flight-performance simulation, not real-world
+          classification, and reusing it as a category boundary let genuine airliners it simply hasn't modelled yet (A330-900, A220, CRJ-1000,
+          787-10, among others) fall into Small aircraft by default — found directly on this dataset, not a hypothetical edge case.
         </p>
         <p style={pStyle}>
-          The anomaly model carves out a third category, <strong style={{ color: "var(--text)" }}>Helicopter</strong>, rather than leaving them
-          inside Small aircraft: a helicopter's baseline profile (hover, no fixed-wing climb/cruise/descent phases) sits structurally outside a
-          fixed-wing distribution even for a perfectly ordinary flight, so pooling them in risked flagging most of that population as anomalous
-          regardless of the actual flight. The trajectory-deviation and route-directness models below don't make this split — deviation excludes the
-          whole Small aircraft category outright anyway (see below), and route directness has no OpenAP-simulation step to have the same failure
-          mode, so helicopters stay folded into Small aircraft for that one.
+          The anomaly and route-directness models below both use all four categories: a helicopter's baseline profile (hover, no fixed-wing
+          climb/cruise/descent phases) and a business jet's (cruising far faster and higher than typical general aviation, and more directly point-
+          to-point than typical training/touring circuits) each sit meaningfully outside the other distributions even for a perfectly ordinary
+          flight, so pooling either into Small aircraft risked flagging most of that population as anomalous regardless of the actual flight. Only
+          the trajectory-deviation model doesn't make this split — it excludes the whole non-airliner population outright anyway (no OpenAP
+          performance model exists for any of the three), so there's no distribution to split in the first place.
         </p>
         <Table
           head={["Category", "Flights (anomaly model)", "Flights (directness model)"]}
           rows={[
-            ["Airliner", "11,634", "10,993"],
-            ["Small aircraft", "1,768", "1,674"],
-            ["Helicopter", "191", "included in Small aircraft (122)"],
+            ["Airliner", "12,059", "11,376"],
+            ["Business jet", "1,055", "995"],
+            ["Small aircraft", "229", "144"],
+            ["Helicopter", "191", "122"],
           ]}
         />
       </Section>
@@ -341,7 +371,7 @@ export function Documentation() {
                 width. Three now (helicoptere added), not the two this was
                 originally built for — a fixed-count grid still fits since
                 categoryOrder itself is a fixed, known list. */}
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${categoryOrder.length}, 1fr)`, gap: 16, marginBottom: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 2 : categoryOrder.length}, 1fr)`, gap: 16, marginBottom: 8 }}>
               {categoryOrder.map((cat) => (
                 <div key={cat} style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
                   <DensityCurve label={CATEGORY_LABELS[cat]} params={anomalieParams[cat]} />
@@ -364,9 +394,10 @@ export function Documentation() {
           <Table
             head={["Category", "Train", "Validation", "ε (1st pct. log-likelihood)"]}
             rows={[
-              ["Airliner", "10,471", "1,163", "-53.04"],
-              ["Small aircraft", "1,592", "176", "-43.00"],
-              ["Helicopter", "172", "19", "-30.12"],
+              ["Airliner", "10,854", "1,205", "-47.03"],
+              ["Business jet", "950", "105", "-61.23"],
+              ["Small aircraft", "207", "22", "-40.43"],
+              ["Helicopter", "172", "19", "-44.41"],
             ]}
           />
         )}
@@ -376,8 +407,22 @@ export function Documentation() {
           aircraft (every feature's out-of-Europe mean within ~0.6 standard deviations of the Europe-trained one — see{" "}
           <code style={codeStyle}>scripts/check_geographic_consistency.py</code>), so no extra flag for those two. Helicopters are different: mission
           profile varies far more by region (offshore, medical, touristic) than a fixed-wing flight's does, so a random helicopter draw whose
-          trajectory never touches Europe gets an <strong style={{ color: "var(--amber)" }}>out of the training scope</strong> warning on its score
+          trajectory never touches Europe gets an <strong style={{ color: "#fff" }}>out of the training scope</strong> warning on its score
           regardless — not contingent on this check, a standing caution for that category.
+        </p>
+        <p style={{ ...pStyle, marginTop: 12 }}>
+          For an Airliner flight whose score flags an anomaly, a second, entirely separate model attempts to name which of three known patterns it
+          matches: <strong style={{ color: "var(--text)" }}>go-around</strong>, <strong style={{ color: "var(--text)" }}>holding pattern</strong>,
+          or <strong style={{ color: "var(--text)" }}>emergency descent</strong> — shown as a small tag next to the badge above. It's a Random Forest
+          from a separate project, trained on the same OpenSky day but on synthetically injected anomalies (parametrised go-arounds, holding
+          circuits, and rapid descents — real labelled examples of any of these are scarce by nature) rather than confirmed real ones, so treat the
+          tag as an indicative best guess, not a diagnosis. A "normal" result from that model isn't a contradiction of the flagged score above — it
+          means the anomaly doesn't match any of these three specific patterns, which is itself useful information. Full write-up, dataset
+          construction, and evaluation:{" "}
+          <a href="https://github.com/victorvb22/flight-trajectory-detection" target="_blank" rel="noreferrer" style={{ color: "#fff" }}>
+            github.com/victorvb22/flight-trajectory-detection
+          </a>
+          .
         </p>
       </Section>
 
@@ -386,10 +431,10 @@ export function Documentation() {
           Independent of the anomaly score. The real climb/cruise/descent phases (segmented from vertical speed and altitude) are compared against
           an OpenAP-simulated optimal profile for the same aircraft type — same route distance, same typecode's performance model. Each phase gets
           its own deviation percentage (actual vs. optimal vertical speed and phase duration); the overall score is their combination. A typecode
-          OpenAP doesn't recognize — the whole Small aircraft category, by definition, helicopters included — gets no score at all rather than a
-          number computed by comparing it against a substituted A320 simulation: OpenAP only models fixed-wing airliners and business jets, and a
-          comparison against a performance profile for a different kind of aircraft entirely isn't a deviation measurement, just a misleading number
-          that happens to look like one.
+          OpenAP doesn't recognize — Business jet and Small aircraft both, by definition, helicopters included — gets no score at all rather than a
+          number computed by comparing it against a substituted A320 simulation: OpenAP only models a few dozen mainline/regional airliner types,
+          and a comparison against a performance profile for a different kind of aircraft entirely isn't a deviation measurement, just a misleading
+          number that happens to look like one.
         </p>
       </Section>
 
@@ -403,20 +448,24 @@ export function Documentation() {
         <p style={pStyle}>
           Scored the same way as the anomaly model (percentile rank against its category's training distribution) but without a Gaussian — a single
           bounded ratio doesn't need the multi-feature machinery built for combining seven dimensions, so its percentiles are computed directly
-          (empirically) from the training data instead.
+          (empirically) from the training data instead. Uses all four categories, same as the anomaly model — checked directly on real data rather
+          than assumed: Business jet's median/mean ratio (0.895/0.839) is meaningfully higher than Small aircraft's (0.851/0.761), so pooling them
+          would have diluted Small aircraft's own baseline with flights that don't share its profile.
         </p>
         <Table
           head={["Category", "Median ratio", "Mean ratio"]}
           rows={[
             ["Airliner", "0.928", "0.894"],
-            ["Small aircraft", "0.903", "0.843"],
+            ["Business jet", "0.895", "0.839"],
+            ["Small aircraft", "0.851", "0.761"],
+            ["Helicopter", "0.921", "0.847"],
           ]}
         />
       </Section>
 
       <div style={{ display: "flex", justifyContent: "center", padding: "24px 0 8px" }}>
         <a
-          href="https://github.com/"
+          href="https://github.com/victorvb22/flightwiser"
           target="_blank"
           rel="noreferrer"
           style={{
