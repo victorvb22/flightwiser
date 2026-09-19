@@ -451,7 +451,10 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
   }, [projection, minZoom]);
 
   if (points.length < 2) {
-    return <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>Not enough trajectory points to draw a path.</p>;
+    // margin: 0 matters here — the default <p> margins collapse through the
+    // wrappers above and fall outside the measured content height that
+    // sizes the Trajectory card's reveal, so the last line gets clipped.
+    return <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>Not enough trajectory points to draw a path.</p>;
   }
 
   // Altitude drives both hue and lightness: light green on the ground,
