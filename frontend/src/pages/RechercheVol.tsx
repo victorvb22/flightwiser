@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Fingerprint, Gauge, Plane, PlaneLanding, PlaneTakeoff, Radio, Search, Shuffle, Wind } from "lucide-react";
+import { Fingerprint, Gauge, Plane, PlaneLanding, PlaneTakeoff, Search, Shuffle, Wind } from "lucide-react";
 import { ApiError, FlightNotFoundError, getFlight, getRandomFlight, type FlightResponse, type StatutVol } from "../services/api";
 import { SplitFlapText } from "../components/SplitFlapText";
 import { PulseRing } from "../components/PulseRing";
@@ -8,6 +8,8 @@ import { JaugeEcart } from "../components/visualisations/JaugeEcart";
 import { ScoreAnomalie } from "../components/visualisations/ScoreAnomalie";
 import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
 import { severityColor, worstSeverity } from "../lib/severity";
+import { useIsMobile } from "../lib/useIsMobile";
+import { useAppData } from "../lib/AppDataContext";
 
 type Etat =
   | { statut: "repos" }
@@ -59,24 +61,6 @@ const ghostButtonStyle: React.CSSProperties = {
   background: "var(--surface-3)",
   color: "var(--text)",
   border: "1px solid rgba(47, 230, 164, 0.45)",
-};
-
-// The current filter (Airborne/Landed) renders as a small label *outside*
-// the button, absolutely positioned to its right — so it never affects the
-// button's own box, and "Random flight" always sits centred the same way
-// the "Search" button's label does, selected or not.
-const randomFilterLabelStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  left: "100%",
-  transform: "translateY(-50%)",
-  marginLeft: 10,
-  fontSize: 10.5,
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: 1,
-  pointerEvents: "none",
-  whiteSpace: "nowrap",
 };
 
 const randomMenuItemStyle: React.CSSProperties = {
@@ -201,32 +185,22 @@ function useAutoHeight(): [React.RefObject<HTMLDivElement | null>, number] {
   return [ref, height];
 }
 
-// "direct" (the data source) sits outside the pill, to its left — a live
-// "on air" indicator that flashes red for a few seconds on arrival, like a
-// real broadcast tally light, then settles to a quiet, legible state. The
-// pill itself carries the airborne/landed reading, its background colour
-// doing double duty: blue while still in flight, the same colour the
-// anomaly score itself uses once landed (score only exists for completed
-// flights).
+// The data source ("vedette"/"cache") used to show here as a small tally-
+// light-style indicator next to the pill — removed once "vedette" became
+// the normal, expected case for every fresh pool draw rather than a
+// noteworthy state worth calling out.
 function StatutBadge({
   statut,
-  source,
   anomalieScore,
   ecartScore,
   directnessScore,
 }: {
   statut: string;
-  source: string;
   anomalieScore: number | null;
   ecartScore: number | null;
   directnessScore: number | null;
 }) {
   const enVol = statut === "en_vol";
-  const [isFresh, setIsFresh] = useState(true);
-  useEffect(() => {
-    const timer = setTimeout(() => setIsFresh(false), 3000);
-    return () => clearTimeout(timer);
-  }, []);
   // Worst of the three landed-flight diagnostics drives the pill colour.
   const worst = worstSeverity([
     { score: anomalieScore, good: 1 },
@@ -235,42 +209,46 @@ function StatutBadge({
   ]);
   const background = enVol ? "var(--blue)" : worst !== null ? severityColor(worst.score, worst.good) : "var(--surface-2)";
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          color: isFresh ? "var(--red)" : "rgba(255, 255, 255, 0.55)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          fontWeight: 600,
-          transition: "color 10000ms ease",
-        }}
-      >
-        <Radio size={12} />
-        {source}
-      </span>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          padding: "7px 14px",
-          borderRadius: 999,
-          border: "1px solid var(--border-strong)",
-          background,
-          color: "#04110c",
-          fontWeight: 700,
-          fontSize: 14,
-        }}
-      >
-        {enVol ? "Airborne" : "Landed"}
-      </span>
-    </div>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "7px 14px",
+        borderRadius: 999,
+        border: "1px solid var(--border-strong)",
+        background,
+        color: "#04110c",
+        fontWeight: 700,
+        fontSize: 14,
+      }}
+    >
+      {enVol ? "Airborne" : "Landed"}
+    </span>
   );
 }
 
-function MetaTile({ label, value, unit, connu, icon }: { label: string; value: string; unit?: string; connu: boolean; icon: ReactNode }) {
+function MetaTile({
+  label,
+  mobileLabel,
+  value,
+  unit,
+  connu,
+  icon,
+}: {
+  label: string;
+  /** Shorter stand-in for phone-width screens — the tile grid stays a
+   * single row of 6 there too (unlike everything else on this page, that's
+   * deliberately not changing on mobile), so a shrunk font alone isn't
+   * enough for the longest labels ("Current altitude"/"Current speed") to
+   * stay on one line without clipping against the tile's own overflow:hidden. */
+  mobileLabel?: string;
+  value: string;
+  unit?: string;
+  connu: boolean;
+  icon: ReactNode;
+}) {
+  const isMobile = useIsMobile();
+  const displayLabel = isMobile && mobileLabel ? mobileLabel : label;
   return (
     <div
       style={{
@@ -304,7 +282,7 @@ function MetaTile({ label, value, unit, connu, icon }: { label: string; value: s
       <div style={{ position: "relative", minWidth: 0 }}>
         <div
           style={{
-            fontSize: 10,
+            fontSize: isMobile ? 8 : 10,
             color: "#fff",
             opacity: 0.8,
             textTransform: "uppercase",
@@ -312,7 +290,7 @@ function MetaTile({ label, value, unit, connu, icon }: { label: string; value: s
             whiteSpace: "nowrap",
           }}
         >
-          {label}
+          {displayLabel}
         </div>
         {/* Unit rendered as its own static span, never fed to SplitFlapText —
             it sits at a fixed spot right after the value and never flickers,
@@ -410,7 +388,13 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
     // field's typical real length (e.g. a 4-letter ICAO code, a 3-digit
     // speed), so the board doesn't visibly resize once real data lands.
     <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
-      <MetaTile label="Aircraft type" value={vol?.typecode ?? "----"} connu={!!vol?.typecode} icon={<Plane size={70} strokeWidth={0.75} />} />
+      <MetaTile
+        label="Aircraft type"
+        mobileLabel="Aircraft"
+        value={vol?.typecode ?? "----"}
+        connu={!!vol?.typecode}
+        icon={<Plane size={70} strokeWidth={0.75} />}
+      />
       <MetaTile
         label="Registration"
         value={vol?.immatriculation ?? "------"}
@@ -426,6 +410,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
       />
       <MetaTile
         label="Current altitude"
+        mobileLabel="Cur altitude"
         value={altitude}
         unit="m"
         connu={vol?.altitude_actuelle != null}
@@ -433,6 +418,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
       />
       <MetaTile
         label="Current speed"
+        mobileLabel="Cur speed"
         value={vitesse}
         unit="km/h"
         connu={vol?.vitesse_actuelle != null}
@@ -443,6 +429,8 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
 }
 
 export function RechercheVol() {
+  const isMobile = useIsMobile();
+  const { refreshHistory } = useAppData();
   const [identifiant, setIdentifiant] = useState("");
   const [etat, setEtat] = useState<Etat>({ statut: "repos" });
   const [showRandomMenu, setShowRandomMenu] = useState(false);
@@ -558,6 +546,10 @@ export function RechercheVol() {
     try {
       const vol = await getFlight(valeur);
       setEtat({ statut: "succes", vol });
+      // Fire-and-forget: lets the Aggregate view's cached history already
+      // include this flight by the time the user gets there, instead of it
+      // only showing up after that page's own next background refresh.
+      refreshHistory();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
     }
@@ -580,11 +572,31 @@ export function RechercheVol() {
       // Search-mode styling, rather than leaving Random flight looking
       // "still armed" for a search that already ran.
       setRandomFilter(null);
+      refreshHistory();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
     } finally {
       setRandomLoading(false);
     }
+  }
+
+  // Desktop reveals the filter dropdown on hover, so a click on the button
+  // itself has always meant "run it" — there's no separate reveal step to
+  // skip. Touch has no hover at all, so without this, a phone's very first
+  // tap on the button would fire a search immediately and Airborne/Landed
+  // would never be reachable. Only the first tap (menu not open yet, no
+  // filter armed) is diverted to opening the menu instead; every other tap
+  // — a filter already picked, or a second tap with the menu still open and
+  // nothing picked (i.e. "I looked, I want any flight") — runs the search
+  // exactly like desktop's click always has. Never triggered on desktop
+  // (isMobile is false there), so this changes nothing about its behaviour.
+  function handleRandomButtonClick() {
+    if (isMobile && randomFilter === null && !randomLoading && !showRandomMenu) {
+      setShowRandomMenu(true);
+      return;
+    }
+    setShowRandomMenu(false);
+    rechercherAleatoire();
   }
 
   function messageErreur(err: unknown): string {
@@ -673,78 +685,95 @@ export function RechercheVol() {
               Search
             </button>
           </form>
-          <div
-            style={{ position: "absolute", top: 0, left: "100%", marginLeft: 10 }}
-            onMouseEnter={openRandomMenu}
-            onMouseLeave={closeRandomMenuSoon}
-          >
-            <button
-              type="button"
-              onClick={rechercherAleatoire}
-              disabled={etat.statut === "chargement"}
-              style={randomActive ? buttonStyle : ghostButtonStyle}
-            >
-              <Shuffle size={16} color={randomActive ? "#04110c" : "var(--green)"} style={{ transition: "stroke 300ms ease" }} />
-              Random flight
-            </button>
+          {/* className, not inline position — index.css flips this whole
+              layout (below the form, right-aligned) under 640px, and the
+              filter label with it (RechercheVol section above explains why
+              the dropdown itself lives in its own always-position:relative
+              div just below rather than moving with this one: its own
+              anchor point needs to stay put across that flip). */}
+          <div className="random-flight-wrapper" onMouseEnter={openRandomMenu} onMouseLeave={closeRandomMenuSoon}>
             {/* Stays visible once picked, hover or not — it's informational,
-                not part of the hover-to-open dropdown mechanism, and now
-                sits to the side rather than below so it never competes with
-                the dropdown for the same spot. Hidden while typing a search
-                (same condition as the button swap above), since it no
-                longer reflects what's about to run. Keyed off randomFilter
-                directly rather than randomActive, since a bare click with
-                nothing picked also flips randomActive on (via randomLoading)
-                but has no filter to actually label. */}
+                not part of the hover-to-open dropdown mechanism. Hidden
+                while typing a search (same condition as the button swap
+                above), since it no longer reflects what's about to run.
+                Keyed off randomFilter directly rather than randomActive,
+                since a bare click with nothing picked also flips
+                randomActive on (via randomLoading) but has no filter to
+                actually label. Rendered before the button in the markup
+                (not just visually via absolute positioning) so it lands on
+                the correct side once the mobile layout turns it into a
+                normal flex item, left-to-right. */}
             {randomFilter !== null && (
-              <span style={{ ...randomFilterLabelStyle, color: randomFilter === "en_vol" ? "var(--blue)" : "var(--green)" }}>
+              <span className="random-filter-label" style={{ color: randomFilter === "en_vol" ? "var(--blue)" : "var(--green)" }}>
                 {randomFilter === "en_vol" ? "Airborne" : "Landed"}
               </span>
             )}
-            {showRandomMenu && (
-              <div
-                style={{
-                  position: "absolute",
-                  // Flush against the button (no gap): a marginTop here would
-                  // leave a sliver that belongs to neither element, and moving
-                  // the mouse through it fires mouseLeave on the wrapper
-                  // before the pointer ever reaches the dropdown — exactly
-                  // the "menu doesn't stay open" bug.
-                  top: "100%",
-                  left: 0,
-                  minWidth: "100%",
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: 8,
-                  overflow: "hidden",
-                  zIndex: 10,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                }}
+            {/* Always position:relative, on both breakpoints — the dropdown
+                below anchors to this specific box regardless of whether the
+                wrapper around it is itself absolutely positioned (desktop)
+                or a static flex item (mobile), so it doesn't need its own
+                mobile-specific positioning at all. */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={handleRandomButtonClick}
+                disabled={etat.statut === "chargement"}
+                style={randomActive ? buttonStyle : ghostButtonStyle}
               >
-                <button
-                  type="button"
-                  className="random-menu-item"
-                  onClick={() => {
-                    setRandomFilter(randomFilter === "en_vol" ? null : "en_vol");
-                    setIdentifiant("");
+                <Shuffle size={16} color={randomActive ? "#04110c" : "var(--green)"} style={{ transition: "stroke 300ms ease" }} />
+                Random flight
+              </button>
+              {showRandomMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    // Flush against the button (no gap): a marginTop here would
+                    // leave a sliver that belongs to neither element, and moving
+                    // the mouse through it fires mouseLeave on the wrapper
+                    // before the pointer ever reaches the dropdown — exactly
+                    // the "menu doesn't stay open" bug.
+                    top: "100%",
+                    left: 0,
+                    minWidth: "100%",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    zIndex: 10,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
                   }}
-                  style={{ ...randomMenuItemStyle, ...(randomFilter === "en_vol" ? randomMenuItemActiveStyleAirborne : null) }}
                 >
-                  Airborne
-                </button>
-                <button
-                  type="button"
-                  className="random-menu-item"
-                  onClick={() => {
-                    setRandomFilter(randomFilter === "atterri" ? null : "atterri");
-                    setIdentifiant("");
-                  }}
-                  style={{ ...randomMenuItemStyle, ...(randomFilter === "atterri" ? randomMenuItemActiveStyleLanded : null) }}
-                >
-                  Landed
-                </button>
-              </div>
-            )}
+                  <button
+                    type="button"
+                    className="random-menu-item"
+                    onClick={() => {
+                      setRandomFilter(randomFilter === "en_vol" ? null : "en_vol");
+                      setIdentifiant("");
+                      // Touch has no hover to close this with afterward (the
+                      // desktop mouseleave-based auto-close never fires) —
+                      // closing here only on mobile leaves desktop's own
+                      // hover-driven behaviour untouched.
+                      if (isMobile) setShowRandomMenu(false);
+                    }}
+                    style={{ ...randomMenuItemStyle, ...(randomFilter === "en_vol" ? randomMenuItemActiveStyleAirborne : null) }}
+                  >
+                    Airborne
+                  </button>
+                  <button
+                    type="button"
+                    className="random-menu-item"
+                    onClick={() => {
+                      setRandomFilter(randomFilter === "atterri" ? null : "atterri");
+                      setIdentifiant("");
+                      if (isMobile) setShowRandomMenu(false);
+                    }}
+                    style={{ ...randomMenuItemStyle, ...(randomFilter === "atterri" ? randomMenuItemActiveStyleLanded : null) }}
+                  >
+                    Landed
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -775,7 +804,6 @@ export function RechercheVol() {
             <StatutBadge
               key={vol.identifiant}
               statut={vol.statut}
-              source={vol.source}
               anomalieScore={vol.anomalie?.score ?? null}
               ecartScore={vol.ecart_trajectoire?.score_global ?? null}
               directnessScore={vol.directness?.score ?? null}
