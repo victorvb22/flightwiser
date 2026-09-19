@@ -553,7 +553,7 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
   // The 960-unit-wide view box is drawn at roughly a third of that on a
   // phone, which shrinks the city names to a few pixels — scaled up there so
   // they read at about the size they have on desktop.
-  const cityLabelScale = isMobile ? 2.6 : 1;
+  const cityLabelScale = isMobile ? 2.08 : 1;
 
   return (
     <section>

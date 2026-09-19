@@ -63,7 +63,19 @@ function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) 
   const cellPadding = isMobile ? "6px 6px" : "6px 10px";
   return (
     <div style={isMobile ? { margin: `0 -${CARD_PADDING_MOBILE}px`, overflowX: "auto" } : undefined}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12.5 : 13.5, marginTop: 8, marginBottom: 12 }}>
+      {/* Phone-width only: equal-width columns and justified text spread the
+          table evenly across the full width instead of letting the columns
+          bunch up to the left at their natural content width. */}
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: isMobile ? 12.5 : 13.5,
+          marginTop: 8,
+          marginBottom: 12,
+          ...(isMobile ? { tableLayout: "fixed", textAlign: "justify" } : null),
+        }}
+      >
         <thead>
           <tr style={{ textAlign: "left", color: "var(--text-faint)", fontSize: isMobile ? 10.5 : 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
             {head.map((h) => (
@@ -326,14 +338,17 @@ export function Documentation() {
           enough great-circle distance for route directness).
         </p>
         <p style={pStyle}>
-          Every flight is split into categories before any model sees it — internally <code style={codeStyle}>avion_ligne</code>,{" "}
-          <code style={codeStyle}>jet_affaire</code>, and <code style={codeStyle}>petit_avion</code>, shown here as{" "}
-          <strong style={{ color: "var(--text)" }}>Airliner</strong>, <strong style={{ color: "var(--text)" }}>Business jet</strong>, and{" "}
-          <strong style={{ color: "var(--text)" }}>Small aircraft</strong> (flight school, touring, ULM) — because a single shared distribution
-          systematically penalises whichever group is a minority in the data. The boundary is a lookup table (typecode → category), not OpenAP's own
-          supported-aircraft list as an earlier version used: OpenAP's coverage is built for flight-performance simulation, not real-world
-          classification, and reusing it as a category boundary let genuine airliners it simply hasn't modelled yet (A330-900, A220, CRJ-1000,
-          787-10, among others) fall into Small aircraft by default — found directly on this dataset, not a hypothetical edge case.
+          Every flight is split into four categories before any model sees it — internally <code style={codeStyle}>avion_ligne</code>,{" "}
+          <code style={codeStyle}>jet_affaire</code>, <code style={codeStyle}>petit_avion</code>, and <code style={codeStyle}>helicoptere</code>,
+          shown here as <strong style={{ color: "var(--text)" }}>Airliner</strong>,{" "}
+          <strong style={{ color: "var(--text)" }}>Business jet</strong>,{" "}
+          <strong style={{ color: "var(--text)" }}>Small aircraft</strong> (flight school, touring, ULM), and{" "}
+          <strong style={{ color: "var(--text)" }}>Helicopter</strong> — because a single shared distribution systematically penalises whichever
+          group is a minority in the data. The boundary is a lookup table (typecode → category), not OpenAP's own supported-aircraft list as an
+          earlier version used: OpenAP's coverage is built for flight-performance simulation, not real-world classification, and reusing it as a
+          category boundary let genuine airliners it simply hasn't modelled yet (A330-900, A220, CRJ-1000, 787-10, among others) fall into Small
+          aircraft by default — found directly on this dataset, not a hypothetical edge case. Helicopters are identified automatically from the
+          aircraft database's own type designator (rotorcraft class) rather than listed by hand.
         </p>
         <p style={pStyle}>
           The anomaly and route-directness models below both use all four categories: a helicopter's baseline profile (hover, no fixed-wing
