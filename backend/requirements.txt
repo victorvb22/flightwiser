@@ -8,3 +8,5 @@ truststore==0.10.4
 python-dotenv==1.2.3
 openap==2.6.1
 scipy==1.18.1
+scikit-learn==1.8.0
+joblib==1.6.0
