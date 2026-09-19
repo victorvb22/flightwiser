@@ -256,7 +256,7 @@ function MetaTile({
         overflow: "hidden",
         // Tighter on a phone-width screen: six tiles share one row there,
         // so every horizontal pixel of padding costs value/unit room.
-        padding: isMobile ? "10px 6px" : "12px 12px",
+        padding: isMobile ? "10px 3px" : "12px 12px",
         border: "1px solid var(--border)",
         // Same background as the trajectory/diagnostic cards — no separate
         // tint of its own.
@@ -309,9 +309,12 @@ function MetaTile({
               display: "inline-block",
               fontFamily: "var(--font-mono)",
               // Same value size for all six tiles on a phone (not sized per
-              // tile), chosen so the widest reading — a 5-digit altitude
-              // plus its unit — still fits inside the tile.
-              fontSize: isMobile ? 10 : 18,
+              // tile), tracking the viewport: the formula is the largest
+              // size at which a 6-character reading (a registration) still
+              // fits a tile's inner width at that screen width, so it
+              // grows on wider phones instead of staying pinned to the
+              // narrowest one. Floor/ceiling keep it sane at the extremes.
+              fontSize: isMobile ? "clamp(11px, calc(4.63vw - 4.63px), 15px)" : 18,
               fontWeight: 700,
               color: "#fff",
               whiteSpace: "nowrap",
@@ -327,7 +330,7 @@ function MetaTile({
                 fontWeight: 400,
                 color: "var(--text)",
                 opacity: 0.45,
-                marginLeft: isMobile ? 2 : 8,
+                marginLeft: isMobile ? 1 : 8,
               }}
             >
               {unit}
@@ -402,7 +405,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
     // Each placeholder's dash count is chosen once to roughly match that
     // field's typical real length (e.g. a 4-letter ICAO code, a 3-digit
     // speed), so the board doesn't visibly resize once real data lands.
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: isMobile ? 6 : 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: isMobile ? 4 : 10 }}>
       <MetaTile
         label="Aircraft type"
         mobileLabel="Aircraft"

@@ -419,10 +419,9 @@ export function VueAgregee() {
                               <div
                                 style={{
                                   ...(isMobile
-                                    ? // Fills the visible box, leaving the same 8px
-                                      // (the cell's own padding) on the right as on
-                                      // the left.
-                                      { width: Math.max(scrollBoxWidth - 16, 0), boxSizing: "border-box", position: "sticky", left: 8 }
+                                    ? // Fills the visible box, with the cell's own 8px
+                                      // on the left and a wider 20px on the right.
+                                      { width: Math.max(scrollBoxWidth - 28, 0), boxSizing: "border-box", position: "sticky", left: 8 }
                                     : { maxWidth: "50%", minWidth: 340 }),
                                   // Worst of the flight's three scores frames
                                   // the whole panel — same "which diagnostic
