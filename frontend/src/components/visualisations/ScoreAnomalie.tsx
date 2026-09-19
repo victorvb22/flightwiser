@@ -3,6 +3,16 @@ import type { Anomalie } from "../../services/api";
 import { severityColor, severityLabel } from "../../lib/severity";
 import { useCountUp } from "../../lib/useCountUp";
 
+// Display labels for type_anomalie (backend/models/anomaly_type.py) — "normal"
+// is never shown as a tag (cf. ScoreAnomalie below): it means the flagged
+// score doesn't match any of these three known patterns, not that nothing
+// was computed.
+const ANOMALY_TYPE_LABELS: Record<string, string> = {
+  go_around: "Go-around",
+  holding: "Holding pattern",
+  emergency_descent: "Emergency descent",
+};
+
 const FEATURE_LABELS: Record<string, string> = {
   vitesse_moyenne: "average speed",
   vitesse_max: "max speed",
@@ -73,14 +83,36 @@ export function ScoreAnomalie({ anomalie }: { anomalie: Anomalie | null }) {
   const label = severityLabel(anomalie.score, 1);
   const isAnomaly = label === "anomaly";
   const Icon = isAnomaly ? AlertTriangle : CheckCircle2;
+  // Shown only once the score itself is flagged, and only when it isn't
+  // "normal" — a flagged score whose type comes back "normal" means none of
+  // these three known patterns match, which isn't the same as nothing to
+  // show (cf. ANOMALY_TYPE_LABELS comment).
+  const anomalyTypeLabel = isAnomaly && anomalie.type_anomalie ? ANOMALY_TYPE_LABELS[anomalie.type_anomalie] : undefined;
 
   return (
     <section style={{ display: "flex", gap: 20, alignItems: "center" }}>
       <RingGauge score={anomalie.score} color={color} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
           <Icon size={19} color={color} />
           <span style={{ fontWeight: 700, fontSize: 17.5, color, textTransform: "capitalize" }}>{label}</span>
+          {anomalyTypeLabel && (
+            <span
+              title="Best-effort guess from a separate model, trained only on synthetic examples — never a confirmed real one. Treat as indicative, not a diagnosis."
+              style={{
+                fontSize: 11.5,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-muted)",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border-strong)",
+                borderRadius: 999,
+                padding: "3px 10px",
+                cursor: "help",
+              }}
+            >
+              {anomalyTypeLabel}
+            </span>
+          )}
         </div>
         <p style={{ fontSize: 13, color: "var(--text-faint)", margin: "0 0 10px", lineHeight: 1.5 }}>
           Likelihood rank against normal flights — the lower it is, the more this flight departs from typical behaviour.

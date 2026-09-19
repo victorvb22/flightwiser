@@ -31,6 +31,19 @@ export interface AnomalieFeatureDetail {
   reference: number;
 }
 
+/** One of the three patterns a separate, classical ML project (Random
+ * Forest, trained on synthetic anomaly injections — never a real one, cf.
+ * backend/models/anomaly_type.py) was built to recognise, or "normal" when
+ * none of the three match. Airliner-only (backend restricts the call to
+ * avion_ligne) and always computed when applicable, regardless of whether
+ * this flight's own score actually flags an anomaly — components decide
+ * when to surface it (cf. ScoreAnomalie.tsx: only shown for a flagged score,
+ * and only when it isn't "normal" — that combination isn't a contradiction,
+ * it means "flagged by the score model, but not one of these three known
+ * patterns"). Absent on a flights_cache row written before this field
+ * existed, or null for a non-airliner/insufficient-trajectory flight. */
+export type TypeAnomalie = "go_around" | "holding" | "emergency_descent" | "normal";
+
 export interface Anomalie {
   score: number;
   features_contributives: string[];
@@ -41,6 +54,7 @@ export interface Anomalie {
    * happen. Absent on a flights_cache row written before this field
    * existed; treat as false in that case, same as features_detail. */
   out_of_training_scope?: boolean;
+  type_anomalie?: TypeAnomalie | null;
 }
 
 export interface Directness {
