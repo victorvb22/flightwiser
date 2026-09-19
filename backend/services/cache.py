@@ -1,14 +1,14 @@
-"""SEUL point d'accès à Supabase (brief section 6) — aucun autre module ne doit
-toucher la DB directement.
+"""ONLY access point to Supabase (brief section 6) — no other module should
+touch the DB directly.
 
-Accès REST direct (PostgREST) plutôt qu'un SDK — cohérent avec
-services/opensky_client.py, et largement suffisant pour un get/upsert par clé
-sur une seule table. Le cache est une optimisation, pas une dépendance de
-correction : toute erreur réseau/HTTP est journalisée et traitée comme un
-cache miss (lecture) ou ignorée (écriture) plutôt que de faire échouer une
-recherche dont le résultat a déjà été calculé.
+Direct REST access (PostgREST) rather than an SDK — consistent with
+services/opensky_client.py, and plenty for a get/upsert by key on a single
+table. The cache is an optimization, not a correctness dependency: any
+network/HTTP error is logged and treated as a cache miss (read) or ignored
+(write) rather than failing a search whose result has already been
+computed.
 
-Schéma : db/schema.sql (à exécuter une fois dans le SQL Editor Supabase).
+Schema: db/schema.sql (run once in the Supabase SQL Editor).
 """
 
 import logging
@@ -30,21 +30,21 @@ _HEADERS = {
 }
 
 _CACHED_FIELDS = ("statut", "trajectoire", "ecart_trajectoire", "anomalie", "directness", "kpi_bonus")
-_PAGE_SIZE = 1000  # même plafond PostgREST que services/historical.py — paginer avec Range plutôt que se fier à limit seul.
+_PAGE_SIZE = 1000  # same PostgREST cap as services/historical.py — paginate with Range rather than trust limit alone.
 
 
 def build_cache_id(icao24: str) -> str:
-    """icao24 + date UTC du jour — un vol recherché en direct correspond
-    toujours à "aujourd'hui" pour cet appareil, jamais dérivé de la
-    trajectoire elle-même (qui nécessiterait déjà un appel OpenSky, ce que
-    le cache doit précisément permettre d'éviter)."""
+    """icao24 + today's UTC date — a flight searched live always corresponds
+    to "today" for that aircraft, never derived from the trajectory itself
+    (which would already require an OpenSky call, exactly what the cache is
+    meant to avoid)."""
     today = datetime.now(timezone.utc).date().isoformat()
     return f"{icao24}_{today}"
 
 
 def get_cached_flight(cache_id: str) -> dict[str, Any] | None:
-    """Retourne les champs pertinents de `flights_cache` pour cette clé, ou
-    None si absente ou en cas d'erreur réseau/HTTP (cache miss silencieux)."""
+    """Returns the relevant `flights_cache` fields for this key, or None if
+    absent or on a network/HTTP error (silent cache miss)."""
     try:
         response = requests.get(
             _TABLE_URL,
@@ -54,7 +54,7 @@ def get_cached_flight(cache_id: str) -> dict[str, Any] | None:
         )
         response.raise_for_status()
     except requests.RequestException:
-        logger.warning("Lecture cache impossible pour %s, traité comme un miss", cache_id, exc_info=True)
+        logger.warning("Could not read cache for %s, treated as a miss", cache_id, exc_info=True)
         return None
 
     rows = response.json()
@@ -62,11 +62,10 @@ def get_cached_flight(cache_id: str) -> dict[str, Any] | None:
 
 
 def get_all_cached_flights() -> list[dict[str, Any]]:
-    """Tous les vols jamais recherchés (donc mis en cache), tous appareils et
-    toutes dates confondus — la source d'un historique de recherche qui
-    survit à la session/au navigateur, contrairement à un état purement
-    client. Le plus récent en premier. Liste vide en cas d'erreur réseau/HTTP
-    (même politique "miss silencieux" que get_cached_flight)."""
+    """Every flight ever searched (and therefore cached), across all aircraft
+    and dates — the source for a search history that survives the session/
+    browser, unlike purely client-side state. Most recent first. Empty list
+    on a network/HTTP error (same "silent miss" policy as get_cached_flight)."""
     rows: list[dict[str, Any]] = []
     offset = 0
     try:
@@ -84,15 +83,15 @@ def get_all_cached_flights() -> list[dict[str, Any]]:
                 break
             offset += _PAGE_SIZE
     except requests.RequestException:
-        logger.warning("Lecture de l'historique complet impossible, liste vide retournée", exc_info=True)
+        logger.warning("Could not read the full history, returning an empty list", exc_info=True)
         return []
     return rows
 
 
 def store_flight(cache_id: str, result: dict[str, Any]) -> None:
-    """Upsert du résultat calculé pour ce vol. Échec journalisé, jamais
-    remonté : l'utilisateur a déjà sa réponse, ne pas la faire échouer
-    parce que l'écriture cache a échoué."""
+    """Upserts the computed result for this flight. Failure logged, never
+    surfaced: the user already has their response, don't fail it because the
+    cache write failed."""
     row: FlightCacheRow = {
         "id": cache_id,
         "statut": result["statut"],
@@ -114,4 +113,4 @@ def store_flight(cache_id: str, result: dict[str, Any]) -> None:
         )
         response.raise_for_status()
     except requests.RequestException:
-        logger.warning("Écriture cache impossible pour %s", cache_id, exc_info=True)
+        logger.warning("Could not write cache for %s", cache_id, exc_info=True)

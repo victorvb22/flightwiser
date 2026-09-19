@@ -1,33 +1,31 @@
-"""Reconstitue depuis le cache local (raw_states/{date}/*.csv.gz) les
-trajectoires brutes des vols candidats dans EUROPE_BBOX pour le jour donné —
-seule source de données pour l'entraînement (plus de table flights_historical
-intermédiaire : la Vue agrégée lit flights_cache désormais, cf.
-services/cache.py, pas un import batch séparé). Utilise
-services/opensky_historical.py (scan/extraction/segmentation génériques,
-sans notion de zone géographique) ; aucun nouveau téléchargement si le cache
-couvre déjà les 24 heures de la date demandée.
+"""Reconstructs, from the local cache (raw_states/{date}/*.csv.gz), the raw
+trajectories of candidate flights within EUROPE_BBOX for the given day — the
+sole data source for training (no more intermediate flights_historical
+table: the Aggregate view now reads flights_cache, cf. services/cache.py,
+not a separate batch import). Uses services/opensky_historical.py (generic
+scan/extraction/segmentation, with no notion of a geographic area); no new
+download if the cache already covers the requested date's 24 hours.
 
-Ne filtre pas sur "aéroport confirmé dans la zone" : cette contrainte n'a de
-sens que pour une vue "vols de telle zone", pas pour l'entraînement, qui n'a
-besoin que de trajectoires exploitables où qu'elles atterrissent — l'écarter
-donne strictement plus de vols utilisables sans perte de qualité (le filtre
-"transition air/sol" ci-dessous garantit déjà une trajectoire complète).
+Doesn't filter on "airport confirmed within the area": that constraint only
+makes sense for a "flights from this area" view, not for training, which
+only needs usable trajectories wherever they land — dropping it strictly
+gives more usable flights with no quality loss (the "air/ground transition"
+filter below already guarantees a complete trajectory).
 
-EUROPE_BBOX plutôt que FRANCE_BBOX (élargissement demandé) : la bbox ne
-détermine que la *candidature* (un avion vu au moins une fois dans la zone
-ce jour-là) — une fois candidat, sa trajectoire complète est extraite
-n'importe où dans le monde (même mécanisme deux-passes que pour la France),
-donc élargir la bbox n'introduit aucune troncature, seulement plus de
-diversité de trajectoires/aéroports/types d'appareils.
+EUROPE_BBOX rather than FRANCE_BBOX (a requested widening): the bbox only
+determines *candidacy* (an aircraft seen at least once in the area that
+day) — once a candidate, its full trajectory is extracted anywhere in the
+world (the same two-pass mechanism as for France), so widening the bbox
+introduces no truncation, only more diversity of trajectories/airports/
+aircraft types.
 
-Sortie : data/processed/flights_historical_features.parquet, avec les seules
-colonnes dont train_anomalie.py/train_directness.py ont besoin (icao24,
-callsign, typecode, still_airborne, waypoints JSON) — à dédupliquer puis
-concaténer à flights_clean.parquet à l'entraînement (cf.
-scripts/_training_data.py : les deux sources se recouvrent partiellement,
-même jour du 27/06/2022).
+Output: data/processed/flights_historical_features.parquet, with only the
+columns train_anomalie.py/train_directness.py need (icao24, callsign,
+typecode, still_airborne, waypoints JSON) — deduplicated then concatenated
+with flights_clean.parquet at training time (cf. scripts/_training_data.py:
+the two sources partially overlap, same day of 2022-06-27).
 
-Usage : python scripts/extract_historical_for_training.py --date 2022-06-27
+Usage: python scripts/extract_historical_for_training.py --date 2022-06-27
 """
 
 import argparse

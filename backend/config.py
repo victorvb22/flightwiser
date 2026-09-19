@@ -1,7 +1,7 @@
-"""Configuration centralisée — toutes les clés/URLs viennent des variables d'environnement.
+"""Centralized configuration — every key/URL comes from environment variables.
 
-Aucun autre module ne doit lire os.environ directement ; tout passe par les
-attributs de `settings` ci-dessous.
+No other module should read os.environ directly; everything goes through the
+`settings` attributes below.
 """
 
 import os

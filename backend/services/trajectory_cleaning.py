@@ -1,48 +1,49 @@
-"""Nettoyage de trajectoire ADS-B — dédoublonnage, suppression des artefacts
-(téléportations de position, altitude/vitesse verticale hors plage physique),
-recalcul de vitesse. Partagé entre le prétraitement batch
-(scripts/preprocess_historical.py) et le pipeline live (pipeline.py), pour
-éviter de dupliquer une logique qu'on a déjà dû déboguer trois fois sur ce
-projet (téléportations, altitude à 38 000 m, vitesse verticale à 90 m/s —
-tous des artefacts ADS-B réels rencontrés sur le dataset historique).
+"""ADS-B trajectory cleanup — deduplication, artifact removal (position
+teleports, altitude/vertical-speed outside a physically plausible range),
+speed recomputation. Shared between the batch preprocessing
+(scripts/preprocess_historical.py) and the live pipeline (pipeline.py), to
+avoid duplicating logic that's already had to be debugged three times on
+this project (teleports, 38,000 m altitude, 90 m/s vertical speed — all real
+ADS-B artifacts found on the historical dataset).
 
-Toutes les fonctions opèrent sur des tuples 7 éléments
-(timestamp, lat, lon, altitude, cap, vitesse_verticale, au_sol) — le format
-brut commun aux deux sources de données (CSV historique et trajectoire live
-OpenSky, une fois cette dernière convertie dans ce même format).
+Every function operates on 7-element tuples
+(timestamp, lat, lon, altitude, cap, vitesse_verticale, au_sol) — the raw
+format shared by both data sources (the historical CSV and OpenSky's live
+trajectory, once the latter is converted to this same format).
 """
 
 import numpy as np
 import pandas as pd
 
 SPEED_SMOOTHING_WINDOW = 5
-# Un point dont la vitesse implicite dépasse ce seuil des deux côtés (segment
-# entrant ET sortant) est un point ADS-B corrompu ("téléportation" ponctuelle,
-# ex. un saut France -> Pacifique en 10s observé sur ce dataset), pas un vrai
-# mouvement — on le supprime plutôt que de fausser la trajectoire.
+# A point whose implied speed exceeds this threshold on both sides (the
+# incoming AND outgoing segment) is a corrupted ADS-B point (a one-off
+# "teleport", e.g. a France -> Pacific jump in 10s observed on this
+# dataset), not real motion — dropped rather than letting it distort the
+# trajectory.
 TELEPORT_SPEED_THRESHOLD_MS = 2000.0
-# Plafond physique défensif sur la vitesse finale (lissée) : aucun avion civil
-# subsonique ne dépasse ~450 m/s (875 kt) au sol, même avec un jet-stream
-# exceptionnel. Absorbe le bruit ADS-B résiduel qui survit à la suppression
-# des téléportations.
+# Defensive physical ceiling on the final (smoothed) speed: no subsonic
+# civil aircraft exceeds ~450 m/s (875 kt) over ground, even with an
+# exceptional jet stream. Absorbs residual ADS-B noise that survives
+# teleport removal.
 MAX_PLAUSIBLE_SPEED_MS = 450.0
-# Plage d'altitude barométrique physiquement plausible pour un vol commercial
-# (bornes larges : plafond ~45 000 ft, plancher sous le niveau de la mer pour
-# les aéroports concernés). Certains points du dataset historique dépassent
-# 38 000 m (record du monde d'altitude en vol habité, clairement un artefact
-# ADS-B), ce qui fausserait les statistiques d'altitude en aval.
+# Physically plausible barometric altitude range for a commercial flight
+# (wide bounds: ceiling ~45,000 ft, floor below sea level for the airports
+# concerned). Some points in the historical dataset exceed 38,000 m (the
+# world altitude record for crewed flight, clearly an ADS-B artifact), which
+# would distort downstream altitude statistics.
 MIN_PLAUSIBLE_ALTITUDE_M = -500.0
 MAX_PLAUSIBLE_ALTITUDE_M = 13716.0
-# Vitesse verticale plausible pour un avion commercial (±30 m/s ~ ±5900 ft/min,
-# bien au-delà des taux de montée/descente réels). Même artefact ADS-B que
-# l'altitude : quelques points du dataset historique dépassent 90 m/s.
+# Plausible vertical speed for a commercial aircraft (±30 m/s ~ ±5900 ft/min,
+# well beyond real climb/descent rates). Same kind of ADS-B artifact as
+# altitude: a few points in the historical dataset exceed 90 m/s.
 MAX_PLAUSIBLE_VERTICAL_RATE_MS = 30.0
 
 EARTH_RADIUS_KM = 6371.0
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
-    """Distance haversine en km entre deux points (scalaires ou tableaux numpy)."""
+    """Haversine distance in km between two points (scalars or numpy arrays)."""
     lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
     dlat = lat2 - lat1
     dlon = lon2 - lon1
@@ -51,16 +52,16 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def drop_missing_position(points: list[tuple]) -> list[tuple]:
-    """Supprime les points sans position (lat/lon manquants) — inutilisables
-    pour la trajectoire, la déduplication ou le calcul de vitesse."""
+    """Drops points with no position (missing lat/lon) — unusable for the
+    trajectory, deduplication, or speed computation."""
     return [p for p in points if p[1] is not None and p[2] is not None]
 
 
 def clip_altitude(points: list[tuple]) -> list[tuple]:
-    """Remplace par None les altitudes hors plage physiquement plausible
-    plutôt que de les plafonner à la borne, ce qui créerait un pic artificiel
-    de valeurs identiques. Traité comme une altitude manquante, déjà géré en
-    aval."""
+    """Replaces altitudes outside the physically plausible range with None
+    rather than clamping them to the bound, which would create an artificial
+    spike of identical values. Treated as a missing altitude, already
+    handled downstream."""
     return [
         p if p[3] is None or MIN_PLAUSIBLE_ALTITUDE_M <= p[3] <= MAX_PLAUSIBLE_ALTITUDE_M
         else (p[0], p[1], p[2], None, p[4], p[5], p[6])
@@ -69,7 +70,7 @@ def clip_altitude(points: list[tuple]) -> list[tuple]:
 
 
 def clip_vertical_rate(points: list[tuple]) -> list[tuple]:
-    """Même logique que clip_altitude, pour la vitesse verticale."""
+    """Same logic as clip_altitude, for vertical speed."""
     return [
         p if p[5] is None or abs(p[5]) <= MAX_PLAUSIBLE_VERTICAL_RATE_MS
         else (p[0], p[1], p[2], p[3], p[4], None, p[6])
@@ -78,9 +79,9 @@ def clip_vertical_rate(points: list[tuple]) -> list[tuple]:
 
 
 def dedupe_waypoints(points: list[tuple]) -> list[tuple]:
-    """Supprime les points consécutifs à coordonnées identiques ou dont le
-    timestamp n'avance pas — sources réelles de division par ~0 dans le
-    calcul de vitesse."""
+    """Drops consecutive points with identical coordinates or a
+    non-advancing timestamp — real sources of division-by-~0 in the speed
+    computation."""
     if not points:
         return points
     deduped = [points[0]]
@@ -95,12 +96,12 @@ def dedupe_waypoints(points: list[tuple]) -> list[tuple]:
 
 
 def drop_position_teleports(points: list[tuple]) -> list[tuple]:
-    """Supprime les points ADS-B corrompus : une position ponctuelle fausse
-    implique une vitesse absurde à la fois pour y arriver et pour en repartir
-    (contrairement à un vrai segment rapide, qui n'est incohérent que dans un
-    sens s'il touche un point valide). Répète jusqu'à stabilité car retirer un
-    point peut révéler un autre point désormais isolé entre deux voisins trop
-    éloignés (rare, mais observé)."""
+    """Drops corrupted ADS-B points: a single wrong position implies an
+    absurd speed both to reach it and to leave it (unlike a genuinely fast
+    segment, which is only inconsistent in one direction if it touches a
+    valid point). Repeats until stable, since removing one point can expose
+    another now isolated between two neighbors that are too far apart (rare,
+    but observed)."""
     for _ in range(5):
         n = len(points)
         if n < 3:
@@ -121,10 +122,10 @@ def drop_position_teleports(points: list[tuple]) -> list[tuple]:
 
 
 def compute_speeds(points: list[tuple]) -> list[float]:
-    """Vitesse sol (m/s) par point via distance haversine / delta de temps,
-    lissée par moyenne glissante puis plafonnée à MAX_PLAUSIBLE_SPEED_MS
-    (bruit ADS-B résiduel). Le premier point reprend la vitesse du second
-    segment (pas de segment précédent disponible)."""
+    """Ground speed (m/s) per point via haversine distance / time delta,
+    smoothed with a rolling mean then capped at MAX_PLAUSIBLE_SPEED_MS
+    (residual ADS-B noise). The first point reuses the second segment's
+    speed (no preceding segment available)."""
     n = len(points)
     if n < 2:
         return [0.0] * n
@@ -145,12 +146,12 @@ def compute_speeds(points: list[tuple]) -> list[float]:
 
 
 def compute_vertical_rates(points: list[tuple]) -> list[float | None]:
-    """Vitesse verticale (m/s) par point via delta d'altitude / delta de
-    temps, lissée puis plafonnée à MAX_PLAUSIBLE_VERTICAL_RATE_MS — miroir de
-    compute_speeds, mais pour une trajectoire qui n'a pas déjà de vitesse
-    verticale mesurée (ex. suivi live OpenSky, contrairement au CSV
-    historique qui l'a directement). None si l'altitude manque pour le point
-    ou son voisin."""
+    """Vertical speed (m/s) per point via altitude delta / time delta,
+    smoothed then capped at MAX_PLAUSIBLE_VERTICAL_RATE_MS — mirrors
+    compute_speeds, but for a trajectory that doesn't already have a
+    measured vertical speed (e.g. live OpenSky tracking, unlike the
+    historical CSV which has it directly). None if altitude is missing for
+    the point or its neighbor."""
     n = len(points)
     if n < 2:
         return [None] * n

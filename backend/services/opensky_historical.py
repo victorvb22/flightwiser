@@ -1,25 +1,23 @@
-"""Extraction de trajectoires complètes depuis les échantillons hebdomadaires
-OpenSky (états mondiaux, un fichier .csv.gz par heure, mis en cache sur
-disque — cf. download_hour) — utilitaires génériques, sans dépendance à une
-zone géographique ou un usage particulier (import batch vers une table,
-génération d'un dataset d'entraînement, etc.), partagés par
-scripts/extract_historical_for_training.py.
+"""Extracting full trajectories from OpenSky's weekly samples (worldwide
+states, one .csv.gz file per hour, cached on disk — cf. download_hour) —
+generic utilities, with no dependency on a particular geographic area or use
+case (batch import into a table, generating a training dataset, etc.),
+shared by scripts/extract_historical_for_training.py.
 
-Un vol au départ d'une zone peut atterrir n'importe où dans le monde (et
-inversement) — un filtrage géographique en une seule passe (ne garder que
-les points dans une bounding box donnée) tronquerait la trajectoire à la
-portion survolant cette zone. D'où deux passes locales (le téléchargement,
-lui, ne se fait qu'une fois par heure, mis en cache sur disque) :
+A flight departing from one area can land anywhere in the world (and vice
+versa) — a single-pass geographic filter (keeping only points inside a given
+bounding box) would truncate the trajectory to the portion flying over that
+area. Hence two local passes (the download itself only happens once per
+hour, cached on disk):
 
-  1. repérer les icao24 passés par la bbox donnée ce jour-là (scan_candidates) ;
-  2. pour ces seuls icao24, extraire TOUTES leurs positions de la journée,
-     n'importe où dans le monde, pour la trajectoire complète
+  1. locate the icao24s that passed through the given bbox that day (scan_candidates);
+  2. for those icao24s only, extract ALL of their positions for the day,
+     anywhere in the world, for the full trajectory
      (extract_candidate_points).
 
-Puis segmentation en vols individuels par écart temporel (segment_flights) et
-nettoyage/reconstruction d'une trajectoire exploitable (build_trajectoire,
-même nettoyage que services/trajectory_cleaning.py utilisé par le reste du
-projet).
+Then segmentation into individual flights by time gap (segment_flights) and
+cleanup/reconstruction into a usable trajectory (build_trajectoire, the same
+cleanup as services/trajectory_cleaning.py used by the rest of the project).
 """
 
 import os
@@ -36,17 +34,17 @@ RAW_STATES_DIR = DATA_DIR / "raw_states"
 
 STATES_URL_TEMPLATE = "https://s3.opensky-network.org/data-samples/states/{date}/{hour:02d}/states_{date}-{hour:02d}.csv.tar"
 
-FLIGHT_GAP_SECONDS = 30 * 60  # écart temporel au-delà duquel on considère un nouveau vol
+FLIGHT_GAP_SECONDS = 30 * 60  # time gap beyond which a new flight is considered to have started
 MIN_POINTS_PER_FLIGHT = 5
 DEFAULT_TYPECODE = "A320"
 
-# Bounding box large (lat_min, lat_max, lon_min, lon_max) utilisée à la fois
-# pour la candidature d'extraction (scripts/extract_historical_for_training.py)
-# et, à l'exécution, pour signaler qu'un vol tiré au hasard est hors de la
-# zone d'entraînement (models/anomalie.py) — une seule définition partagée,
-# pas deux copies qui pourraient diverger. Continentale : Islande/Scandinavie
-# au nord jusqu'aux Canaries/Chypre au sud, Açores/Irlande à l'ouest jusqu'à
-# l'Oural à l'est.
+# Wide bounding box (lat_min, lat_max, lon_min, lon_max) used both for
+# extraction candidacy (scripts/extract_historical_for_training.py) and, at
+# runtime, to flag a randomly drawn flight as outside the training zone
+# (models/anomalie.py) — a single shared definition, not two copies that
+# could drift apart. Continental: Iceland/Scandinavia in the north down to
+# the Canaries/Cyprus in the south, the Azores/Ireland in the west to the
+# Urals in the east.
 EUROPE_BBOX = (34.0, 71.0, -25.0, 45.0)
 
 STATE_COLUMNS = ["time", "icao24", "lat", "lon", "baroaltitude", "heading", "vertrate", "onground"]
@@ -54,8 +52,8 @@ CHUNKSIZE = 2_000_000
 
 
 def download_hour(date: str, hour: int) -> Path:
-    """Télécharge et extrait en streaming le .csv.gz d'une heure donnée (le
-    .tar lui-même n'est jamais gardé). Passe si déjà en cache localement."""
+    """Downloads and streams-extracts a given hour's .csv.gz (the .tar itself
+    is never kept). Skipped if already cached locally."""
     dest_dir = RAW_STATES_DIR / date
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{hour:02d}.csv.gz"
@@ -63,7 +61,7 @@ def download_hour(date: str, hour: int) -> Path:
         return dest
 
     url = STATES_URL_TEMPLATE.format(date=date, hour=hour)
-    print(f"Téléchargement {url} ...")
+    print(f"Downloading {url} ...")
     response = requests.get(url, stream=True, timeout=300)
     response.raise_for_status()
     response.raw.decode_content = False
@@ -80,8 +78,8 @@ def download_hour(date: str, hour: int) -> Path:
 
 
 def scan_candidates(date: str, bbox: tuple[float, float, float, float]) -> set[str]:
-    """Passe 1 : icao24 vus au moins une fois dans `bbox`
-    (lat_min, lat_max, lon_min, lon_max) ce jour-là."""
+    """Pass 1: icao24s seen at least once inside `bbox`
+    (lat_min, lat_max, lon_min, lon_max) that day."""
     candidates: set[str] = set()
     lat_min, lat_max, lon_min, lon_max = bbox
     for hour in range(24):
@@ -89,14 +87,14 @@ def scan_candidates(date: str, bbox: tuple[float, float, float, float]) -> set[s
         for chunk in pd.read_csv(path, usecols=["icao24", "lat", "lon"], dtype={"icao24": str}, chunksize=CHUNKSIZE, compression="gzip"):
             mask = chunk["lat"].between(lat_min, lat_max) & chunk["lon"].between(lon_min, lon_max)
             candidates.update(chunk.loc[mask, "icao24"].dropna().unique())
-        print(f"  heure {hour:02d} : {len(candidates)} candidats cumulés")
+        print(f"  hour {hour:02d}: {len(candidates)} candidates so far")
     return candidates
 
 
 def extract_candidate_points(date: str, candidates: set[str]) -> dict[str, list[tuple]]:
-    """Passe 2 : toutes les positions de la journée pour les icao24 candidats,
-    n'importe où dans le monde — format tuple standard du projet
-    (timestamp, lat, lon, altitude, cap, vitesse_verticale, au_sol)."""
+    """Pass 2: every position for the day for the candidate icao24s, anywhere
+    in the world — the project's standard tuple format (timestamp, lat, lon,
+    altitude, cap, vitesse_verticale, au_sol)."""
     points: dict[str, list[tuple]] = {icao: [] for icao in candidates}
     for hour in range(24):
         path = RAW_STATES_DIR / date / f"{hour:02d}.csv.gz"
@@ -118,15 +116,15 @@ def extract_candidate_points(date: str, candidates: set[str]) -> dict[str, list[
 
 
 def _nan_to_none(value):
-    """pandas représente un champ CSV vide par NaN (float), pas None —
-    contrairement au reste du projet (ex. preprocess_historical.py, qui
-    substitue les `nan` bruts par None avant même le parsing). Sans cette
-    conversion, `drop_missing_position` (qui teste `is not None`) laisse
-    passer un NaN, `trajectory_distance_km` renvoie NaN, et la comparaison
-    `NaN > MAX_PLAUSIBLE_DISTANCE_KM` du modèle d'écart est toujours fausse
-    — le garde-fou de distance est alors silencieusement contourné et
-    OpenAP reçoit un `range_cr` NaN, dont la boucle ne se termine jamais
-    (observé : MemoryError après plusieurs minutes)."""
+    """pandas represents an empty CSV field as NaN (float), not None —
+    unlike the rest of the project (e.g. preprocess_historical.py, which
+    substitutes raw `nan` with None before parsing even happens). Without
+    this conversion, `drop_missing_position` (which tests `is not None`)
+    lets a NaN through, `trajectory_distance_km` returns NaN, and the
+    deviation model's `NaN > MAX_PLAUSIBLE_DISTANCE_KM` comparison is always
+    false — the distance guard is then silently bypassed and OpenAP receives
+    a NaN `range_cr`, whose loop never terminates (observed: MemoryError
+    after several minutes)."""
     return None if pd.isna(value) else value
 
 
@@ -142,11 +140,11 @@ def segment_flights(points: list[tuple]) -> list[list[tuple]]:
 
 
 def flight_touches_bbox(trajectoire: list[dict], bbox: tuple[float, float, float, float]) -> bool:
-    """True si au moins un point de la trajectoire tombe dans `bbox` — même
-    critère que la candidature d'extraction (scan_candidates), appliqué ici
-    a posteriori à une trajectoire déjà construite plutôt qu'à des points
-    bruts. Utilisé pour signaler un vol hors de la zone d'entraînement, pas
-    pour filtrer/tronquer quoi que ce soit."""
+    """True if at least one trajectory point falls inside `bbox` — the same
+    criterion as extraction candidacy (scan_candidates), applied here after
+    the fact to an already-built trajectory rather than to raw points. Used
+    to flag a flight as outside the training zone, not to filter/truncate
+    anything."""
     lat_min, lat_max, lon_min, lon_max = bbox
     return any(lat_min <= p["lat"] <= lat_max and lon_min <= p["lon"] <= lon_max for p in trajectoire)
 
