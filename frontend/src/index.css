@@ -112,6 +112,62 @@ a {
   display: inline-flex;
 }
 
+/* Random flight button + its filter label (RechercheVol.tsx) — desktop:
+   sits to the right of the search form, filter label to ITS right.
+   Same 640px breakpoint as lib/useIsMobile.ts, for the couple of related
+   behaviours (RechercheVol.tsx) that need the same "is this a phone-width
+   screen" answer in JS, not just CSS. */
+.random-flight-wrapper {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 10px;
+}
+
+.random-filter-label {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  margin-left: 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  /* Below the search form instead of beside it, its own right edge lined
+     up with the Search button's — the wrapper spans the same column width
+     as the form (same grid track), so flex-end here lands exactly there. */
+  .random-flight-wrapper {
+    position: static;
+    left: auto;
+    margin-left: 0;
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* Mirrored to the button's left instead of its right. */
+  .random-filter-label {
+    left: auto;
+    right: 100%;
+    margin-left: 0;
+    margin-right: 10px;
+  }
+
+  /* Placeholder only — the typed value keeps the input's own font-size
+     (inputStyle, RechercheVol.tsx). Truncated otherwise: the full copy
+     ("Registration or callsign (e.g. F-GKXA, AFR1234)") doesn't fit a
+     phone-width input at that size. */
+  .search-input::placeholder {
+    font-size: 12.5px;
+  }
+}
+
 .anomaly-feature-tooltip {
   position: absolute;
   bottom: 100%;

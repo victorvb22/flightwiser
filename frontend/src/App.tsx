@@ -3,6 +3,7 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { RechercheVol } from "./pages/RechercheVol";
 import { VueAgregee } from "./pages/VueAgregee";
 import { Documentation } from "./pages/Documentation";
+import { AppDataProvider } from "./lib/AppDataContext";
 
 const navLinkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
   textDecoration: "none",
@@ -39,7 +40,7 @@ export default function App() {
   }, []);
 
   return (
-    <>
+    <AppDataProvider>
       <header
         ref={headerRef}
         className="radar-grid"
@@ -88,6 +89,6 @@ export default function App() {
           <Route path="/documentation" element={<Documentation />} />
         </Routes>
       </main>
-    </>
+    </AppDataProvider>
   );
 }

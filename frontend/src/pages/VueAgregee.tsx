@@ -7,8 +7,9 @@ import { HistogrammeScores } from "../components/visualisations/HistogrammeScore
 import { ScoreAnomalie } from "../components/visualisations/ScoreAnomalie";
 import { JaugeEcart } from "../components/visualisations/JaugeEcart";
 import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
-import { ApiError, getSearchHistory, type Categorie, type HistoryFlightEntry } from "../services/api";
+import type { Categorie, HistoryFlightEntry } from "../services/api";
 import { severityColor, worstSeverity } from "../lib/severity";
+import { useAppData } from "../lib/AppDataContext";
 
 type FeatureKey = "anomalie" | "ecart" | "directness";
 type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "calcule_le";
@@ -131,25 +132,30 @@ function SortHeader({
 }
 
 export function VueAgregee() {
-  const [history, setHistory] = useState<HistoryFlightEntry[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  // Cached above the router (lib/AppDataContext.tsx) — entries/loading/error
+  // survive leaving and coming back to this page within the same session,
+  // so a revisit shows the last-known list immediately instead of the page
+  // going blank and refetching every time. This component itself still
+  // fully unmounts/remounts on navigation as before, so the title's own
+  // split-flap animation below still replays on every visit regardless.
+  const { history: historyState, refreshHistory } = useAppData();
+  const history = historyState.entries ?? [];
+  const loadError = historyState.error;
+  const historyLoading = historyState.loading;
   const [filterText, setFilterText] = useState("");
   const [statutFilter, setStatutFilter] = useState<"all" | "en_vol" | "atterri">("all");
   const [sortKey, setSortKey] = useState<SortKey>("calcule_le");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // The full history (every flight ever searched, not just this browser's
-  // session — services/cache.py's flights_cache is the source of truth)
-  // lives server-side, so this page always fetches it fresh on arrival
-  // rather than reading local state.
+  // Refreshed on every visit — silently, in the background, if a previous
+  // visit already populated the cache (refreshHistory only flips `loading`
+  // back on when there's nothing cached yet, cf. AppDataContext), so this
+  // never blanks a list that's already on screen just to show the same
+  // data again a moment later.
   useEffect(() => {
-    getSearchHistory()
-      .then(setHistory)
-      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Unexpected error"))
-      .finally(() => setHistoryLoading(false));
-  }, []);
+    refreshHistory();
+  }, [refreshHistory]);
 
   // Same pulse indicator as the Search page's title, timed to the title's
   // own split-flap flicker rather than appearing immediately — starting it
