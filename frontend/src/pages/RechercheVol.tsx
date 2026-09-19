@@ -527,6 +527,13 @@ export function RechercheVol() {
   const [trajContentRef, trajContentHeight] = useAutoHeight();
   const [diagContentRef, diagContentHeight] = useAutoHeight();
 
+  // On a phone the cards are stacked, so there is no neighbouring row to
+  // line up with — and the tile row's height is too short for the title
+  // plus the placeholder line, which wraps onto two lines at that width.
+  // The collapsed card is sized to its own content instead (measured
+  // placeholder + title, padding and border), never below the tile row.
+  const diagCollapsedHeight = isMobile ? Math.max(panneauHeight, diagContentHeight + 48) : panneauHeight;
+
   // Random flight is "active" off randomFilter (a filter is armed) or
   // randomLoading (a random search is running right now even with no
   // filter picked) — either way the buttons should swap to show Random
@@ -867,7 +874,7 @@ export function RechercheVol() {
             style={{
               ...cardStyle,
               padding: vol ? cardStyle.padding : "10px 20px",
-              ...expandStyle(vol !== null, Math.max(diagContentHeight + 78, 720), panneauHeight),
+              ...expandStyle(vol !== null, Math.max(diagContentHeight + 78, 720), diagCollapsedHeight),
               // expandStyle's own transition covers max-height/min-height —
               // padding is appended to that same list rather than replacing
               // it, so all three animate together instead of padding
