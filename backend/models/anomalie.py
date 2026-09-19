@@ -1,41 +1,37 @@
-"""Anomalie de trajectoire (brief section 11) — estimation de densité
-gaussienne diagonale par catégorie d'appareil (avion_ligne / petit_avion /
-helicoptere, cf. _anomalie_features.categorize — une gaussienne unique
-pénaliserait systématiquement les groupes minoritaires), une gaussienne par
-feature résumée de vol (cf. _anomalie_features.py), entraînée uniquement sur
-des trajectoires normales (pas d'injection synthétique d'anomalies).
-Paramètres appris hors ligne par scripts/train_anomalie.py et persistés dans
-artifacts/anomalie_params.json.
+"""Trajectory anomaly (brief section 11) — diagonal Gaussian density
+estimation per aircraft category (avion_ligne / jet_affaire / petit_avion /
+helicoptere, cf. services.aircraft_category — a single shared Gaussian would
+systematically penalize minority groups), one Gaussian per summary flight
+feature (cf. _anomalie_features.py), trained only on normal trajectories (no
+synthetic anomaly injection). Parameters learned offline by
+scripts/train_anomalie.py and persisted in artifacts/anomalie_params.json.
 
-Input  : trajectoire réelle (liste de points timestamp/lat/lon/altitude/cap/
-          vitesse_verticale/au_sol/vitesse — le format produit par
-          preprocess_historical.py, pas le JSON trimé du contrat API), le
-          typecode de l'appareil et son icao24 (les deux servent à choisir
-          la catégorie — icao24 pour détecter un hélicoptère, cf.
-          services.aircraft_database.is_helicopter).
-Output : la portion `anomalie` du JSON de réponse (brief section 8) —
-          {"score": float, "features_contributives": [str, ...],
-          "features_detail": [{"feature", "valeur", "reference"}, ...]}, où
-          un score plus bas signale une anomalie plus marquée. `score` est
-          le rang percentile (0-1) de la log-vraisemblance du vol par
-          rapport à la distribution d'entraînement DE SA CATÉGORIE —
-          monotone avec la vraisemblance brute, mais borné et plus lisible
-          côté UI qu'une log-vraisemblance brute (valeurs très négatives),
-          et comparable d'une catégorie à l'autre malgré des échelles de
-          vraisemblance brute différentes (un rang percentile est toujours
-          0-1). `features_detail` (ajout au contrat brief, pas une
-          modification : score/features_contributives restent inchangés)
-          donne, pour chacune des features_contributives, la valeur brute du
-          vol et la valeur de référence (moyenne d'entraînement de sa
-          catégorie, dé-transformée) dans la même unité — affiché au survol
-          côté frontend plutôt que de sur-remplir la carte en permanence.
-Complètement indépendant de ecart_trajectoire.py, qui résout le typecode pour
-un tout autre usage (choisir un modèle de performance OpenAP dans
-_ecart_features.py), pas pour catégoriser. La frontière avion_ligne/
-petit_avion de base vit dans services/aircraft_category.py, partagée avec
-models/directness.py — mais _anomalie_features.categorize() y ajoute une
-troisième catégorie (helicoptere) propre à ce modèle, cf. son propre
-docstring pour le pourquoi.
+Input:  real trajectory (list of timestamp/lat/lon/altitude/cap/
+        vitesse_verticale/au_sol/vitesse points — the format produced by
+        preprocess_historical.py, not the API contract's trimmed JSON) and
+        the aircraft's typecode (to pick the category, cf.
+        services.aircraft_category.categorize).
+Output: the `anomalie` portion of the response JSON (brief section 8) —
+        {"score": float, "features_contributives": [str, ...],
+        "features_detail": [{"feature", "valeur", "reference"}, ...]}, where
+        a lower score signals a more pronounced anomaly. `score` is the
+        percentile rank (0-1) of the flight's log-likelihood against its
+        CATEGORY's own training distribution — monotone with the raw
+        likelihood, but bounded and more readable on the UI side than a raw
+        log-likelihood (very negative values), and comparable across
+        categories despite different raw likelihood scales (a percentile
+        rank is always 0-1). `features_detail` (an addition to the brief's
+        contract, not a modification: score/features_contributives stay
+        unchanged) gives, for each of the features_contributives, the
+        flight's raw value and the reference value (its category's training
+        mean, un-transformed) in the same unit — shown on hover on the
+        frontend rather than permanently cluttering the card.
+Completely independent from ecart_trajectoire.py, which resolves the
+typecode for an entirely different purpose (picking an OpenAP performance
+model in _ecart_features.py — "can this flight be simulated," not "what
+kind of aircraft is this"). None if the typecode is in none of the four
+categories (services.aircraft_category.categorize returns None): no score
+rather than a guessed default classification.
 """
 
 import json
@@ -65,16 +61,21 @@ _raw_params = json.loads(_ARTIFACT_PATH.read_text())
 _models = {name: _CategoryModel(_raw_params["categories"][name]) for name in CATEGORIES}
 
 
-def compute(trajectoire: list[dict], typecode: str, icao24: str) -> dict[str, Any] | None:
-    """None si la trajectoire n'a pas assez de points ou manque totalement
-    d'une mesure nécessaire (cf. _anomalie_features.MIN_POINTS) — un score
-    ne serait pas fiable, pas une erreur en soi (ex. tout début de vol)."""
+def compute(trajectoire: list[dict], typecode: str) -> dict[str, Any] | None:
+    """None if the trajectory doesn't have enough points or is entirely
+    missing a required measurement (cf. _anomalie_features.MIN_POINTS) — a
+    score wouldn't be reliable, not an error in itself (e.g. very start of a
+    flight). Also None if the typecode isn't identified in any of the four
+    categories (services.aircraft_category.categorize)."""
+    category = categorize(typecode)
+    if category is None:
+        return None
+
     raw_features = extract_raw_features(trajectoire)
     if raw_features is None:
         return None
     features = apply_transforms(raw_features)
 
-    category = categorize(typecode, icao24)
     model = _models[category]
     x = np.array([features[f] for f in FEATURES])
     z = (x - model.mean) / model.std

@@ -1,26 +1,25 @@
-"""Écart vs trajectoire optimale simulée par OpenAP (brief section 11).
+"""Deviation vs. an OpenAP-simulated optimal trajectory (brief section 11).
 
-Input  : trajectoire réelle (format préparé par preprocess_historical.py —
-          timestamp/lat/lon/altitude/cap/vitesse_verticale/au_sol/vitesse)
-          + typecode de l'appareil. Contrairement au modèle d'anomalie, il
-          n'y a ni entraînement ni artefact persisté : OpenAP est un
-          simulateur physique/statistique appelé à la demande.
-Output : la portion `ecart_trajectoire` du JSON de réponse (brief section 8)
-          — score_global + détail par phase (montée/croisière/descente),
-          ou None si la trajectoire est trop courte, qu'aucune phase n'est
-          détectable, ou que le typecode n'est pas reconnu par OpenAP (même
-          frontière que services.aircraft_category.categorize : ces vols
-          sont "petit_avion" précisément parce qu'aucun modèle de
-          performance fixed-wing n'existe pour eux ici — pas de simulation
-          de repli, un score comparé à un appareil différent n'aurait pas de
-          sens physique).
+Input:  real trajectory (format prepared by preprocess_historical.py —
+        timestamp/lat/lon/altitude/cap/vitesse_verticale/au_sol/vitesse)
+        + the aircraft's typecode. Unlike the anomaly model, there's neither
+        training nor a persisted artifact: OpenAP is a physical/statistical
+        simulator called on demand.
+Output: the `ecart_trajectoire` portion of the response JSON (brief
+        section 8) — score_global + per-phase detail (climb/cruise/
+        descent), or None if the trajectory is too short, no phase is
+        detectable, or the typecode isn't recognized by OpenAP (this
+        currently covers `jet_affaire` and `petit_avion`, helicopters
+        included — no fixed-wing performance model exists for them here —
+        no fallback simulation, a score compared against a different
+        aircraft wouldn't have any physical meaning).
 
-Contrainte MVP (voir plan de mise en place initiale) : pour un vol encore
-`en_vol` (destination inconnue), ce module ne doit pas être appelé — la route
-appelante renvoie `ecart_trajectoire: null` avec un statut explicite plutôt
-que d'inventer une destination. La distance de vol n'est donc jamais déduite
-d'un aéroport : elle vient directement des deux extrémités de la trajectoire
-réelle (déjà complète pour un vol atterri).
+MVP constraint (see the initial implementation plan): for a flight still
+`en_vol` (destination unknown), this module must not be called — the
+calling route returns `ecart_trajectoire: null` with an explicit status
+rather than inventing a destination. Flight distance is therefore never
+derived from an airport: it comes directly from the real trajectory's two
+endpoints (already complete for a landed flight).
 """
 
 from typing import Any
@@ -44,9 +43,9 @@ _PHASE_METRICS = {
     "descente": ["vitesse_verticale_moyenne", "duree_s"],
 }
 
-# Libellés affichés côté frontend (JaugeEcart.tsx) — texte applicatif, donc en
-# anglais comme le reste de l'interface, contrairement aux clés internes
-# ci-dessus qui restent en français dans tout le code backend.
+# Labels shown on the frontend (JaugeEcart.tsx) — application text, English
+# like the rest of the UI, unlike the internal keys above which stay in
+# French throughout the backend code.
 _METRIC_LABELS = {
     "vitesse_verticale_moyenne": "avg vertical speed",
     "duree_s": "duration (s)",
@@ -75,10 +74,10 @@ def compute(trajectoire: list[dict], typecode: str) -> dict[str, Any] | None:
         return None
 
     distance_km = trajectory_distance_km(trajectoire)
-    # np.isfinite rejette aussi NaN/inf, contrairement à une comparaison
-    # directe (NaN > X est toujours faux, donc un plafond seul ne suffit
-    # pas à écarter une distance NaN — observé : NaN silencieusement passé
-    # à OpenAP, dont la boucle de simulation ne se termine jamais).
+    # np.isfinite also rejects NaN/inf, unlike a direct comparison (NaN > X
+    # is always false, so a ceiling alone isn't enough to rule out a NaN
+    # distance — observed: a NaN silently passed to OpenAP, whose simulation
+    # loop never terminates).
     if not np.isfinite(distance_km) or distance_km <= 0 or distance_km > MAX_PLAUSIBLE_DISTANCE_KM:
         return None
 
@@ -102,7 +101,7 @@ def compute(trajectoire: list[dict], typecode: str) -> dict[str, Any] | None:
     climb_km = sim_climb["s"].max() / 1000
     descent_km = sim_descent["s"].max() / 1000
     cruise_km = max(distance_km - climb_km - descent_km, MIN_CRUISE_KM)
-    sim_cruise = fgen.cruise(dt=10, range_cr=cruise_km * 1000)  # mètres, cf. docstring de _ecart_features
+    sim_cruise = fgen.cruise(dt=10, range_cr=cruise_km * 1000)  # meters, cf. _ecart_features' docstring
 
     sim_summaries = {
         "montee": summarize_sim_phase(sim_climb, "montee"),

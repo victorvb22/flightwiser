@@ -1,21 +1,21 @@
-"""Entraînement offline du score de trajet direct (secondaire, cf.
-models/_directness_features.py pour le rationnel) : calcule, par catégorie
-d'appareil (services.aircraft_category), les points de percentile
-empiriques du ratio distance grand-cercle / distance parcourue sur les vols
-atterris de l'ensemble du dataset disponible — mêmes deux sources,
-dédoublonnées de la même façon (cf. scripts._training_data), que
-scripts/train_anomalie.py (brief : "utiliser le dataset entier") :
+"""Offline training of the route-directness score (secondary, cf.
+models/_directness_features.py for the rationale): computes, per aircraft
+category (services.aircraft_category), the empirical percentile points of
+the great-circle-distance / distance-flown ratio over landed flights from
+the whole available dataset — the same two sources, deduplicated the same
+way (cf. scripts._training_data), as scripts/train_anomalie.py (brief: "use
+the entire dataset"):
   - data/processed/flights_clean.parquet
   - flights_historical_features.parquet (scripts/extract_historical_for_training.py)
 
-Pas de split train/validation ici, contrairement à train_anomalie.py : une
-seule feature scalaire, calibrée par ses propres percentiles empiriques,
-n'a pas de moyenne/écart-type à sur-ajuster sur un petit échantillon — les
-breakpoints de percentile sont calculés directement sur tout l'ensemble
-disponible par catégorie, comme le fait déjà train_anomalie.py pour ses
-propres breakpoints (calculés sur train, pas sur validation).
+No train/validation split here, unlike train_anomalie.py: a single scalar
+feature, calibrated by its own empirical percentiles, has no mean/std to
+overfit on a small sample — the percentile breakpoints are computed
+directly on the whole available set per category, the same way
+train_anomalie.py already computes its own breakpoints (on train, not
+validation).
 
-Usage : python scripts/train_directness.py
+Usage: python scripts/train_directness.py
 """
 
 import json
@@ -27,8 +27,8 @@ import numpy as np
 import pandas as pd
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-# Nécessaire pour "python scripts/train_directness.py" (sys.path[0] est
-# alors scripts/, pas backend/) ; sans effet si déjà lancé via -m.
+# Needed for "python scripts/train_directness.py" (sys.path[0] is then
+# scripts/, not backend/); no effect if already run via -m.
 sys.path.insert(0, str(BACKEND_DIR))
 
 from models._directness_features import extract_route_directness  # noqa: E402
@@ -43,7 +43,7 @@ INPUT_PARQUETS = [
 ]
 ARTIFACT_PATH = BACKEND_DIR / "models" / "artifacts" / "directness_params.json"
 
-N_PERCENTILE_BREAKPOINTS = 101  # percentiles 0..100 inclus
+N_PERCENTILE_BREAKPOINTS = 101  # percentiles 0..100 inclusive
 N_LOWEST_TO_INSPECT = 10
 MIN_FLIGHTS_PER_CATEGORY = 30
 
@@ -53,30 +53,32 @@ def main():
 
     records = []
     n_insufficient = 0
-    for _, row in landed.iterrows():
-        waypoints = json.loads(row["waypoints"])
+    # itertuples(), not iterrows(): cf. the same comment in
+    # scripts/train_anomalie.py (pandas/pyarrow crashes on iterrows() here).
+    for row in landed.itertuples(index=False):
+        waypoints = json.loads(row.waypoints)
         ratio = extract_route_directness(waypoints)
         if ratio is None:
             n_insufficient += 1
             continue
-        records.append({"icao24": row["icao24"], "ratio": ratio, "categorie": categorize(row["typecode"])})
+        records.append({"icao24": row.icao24, "ratio": ratio, "categorie": categorize(row.typecode)})
 
-    print(f"Vols avec ratio exploitable : {len(records)} ({n_insufficient} exclus, distance grand-cercle trop courte ou données insuffisantes)")
+    print(f"Flights with a usable ratio: {len(records)} ({n_insufficient} excluded, great-circle distance too short or insufficient data)")
 
     feat_df = pd.DataFrame(records)
-    print("\nRépartition par catégorie :")
+    print("\nBreakdown by category:")
     print(feat_df["categorie"].value_counts())
 
     categories = {}
     for name in CATEGORIES:
         subset = feat_df[feat_df["categorie"] == name]
-        print(f"\n=== Catégorie : {name} ({len(subset)} vols) ===")
+        print(f"\n=== Category: {name} ({len(subset)} flights) ===")
         if len(subset) < MIN_FLIGHTS_PER_CATEGORY:
-            print(f"ATTENTION : {len(subset)} < {MIN_FLIGHTS_PER_CATEGORY} vols, distribution peu fiable pour cette catégorie.")
+            print(f"WARNING: {len(subset)} < {MIN_FLIGHTS_PER_CATEGORY} flights, unreliable distribution for this category.")
         print(subset["ratio"].describe())
 
         n_lowest = min(N_LOWEST_TO_INSPECT, len(subset))
-        print(f"{n_lowest} vols les moins directs (à inspecter manuellement) :")
+        print(f"{n_lowest} least direct flights (for manual inspection):")
         print(subset.nsmallest(n_lowest, "ratio")[["icao24", "ratio"]].to_string(index=False))
 
         percentiles = np.linspace(0, 100, N_PERCENTILE_BREAKPOINTS)
@@ -86,7 +88,7 @@ def main():
     artifact = {"categories": categories}
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT_PATH.write_text(json.dumps(artifact, indent=2))
-    print(f"\nParamètres écrits dans {ARTIFACT_PATH}")
+    print(f"\nParameters written to {ARTIFACT_PATH}")
 
 
 if __name__ == "__main__":

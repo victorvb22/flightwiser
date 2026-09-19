@@ -1,12 +1,12 @@
-"""Endpoints uniquement (brief section 6) — aucune logique métier ici, tout
-passe par pipeline.py et services/cache.py.
+"""Endpoints only (brief section 6) — no business logic here, everything
+goes through pipeline.py and services/cache.py.
 """
 
 from fastapi import APIRouter, HTTPException
 
 import pipeline
-from models._anomalie_features import categorize
 from services import cache
+from services.aircraft_category import categorize
 from services.aircraft_database import get_registration, get_typecode
 
 router = APIRouter(prefix="/api/v1/flights", tags=["flights"])
@@ -29,12 +29,11 @@ def get_search_history():
                 "identifiant": get_registration(icao24) or icao24,
                 "typecode": typecode,
                 # Same category the anomaly model actually scored this flight
-                # against (models._anomalie_features.categorize) — not a
+                # against (services.aircraft_category.categorize) — not a
                 # separate guess, so it explains a surprising score rather
                 # than risking disagreeing with it. None when the typecode
-                # itself is unknown (no category is computed without one,
-                # cf. pipeline.py — nothing to categorize).
-                "categorie": categorize(typecode, icao24) if typecode is not None else None,
+                # itself is unknown, or unidentified in the category table.
+                "categorie": categorize(typecode) if typecode is not None else None,
                 "statut": row["statut"],
                 "trajectoire": row["trajectoire"],
                 "ecart_trajectoire": row["ecart_trajectoire"],
