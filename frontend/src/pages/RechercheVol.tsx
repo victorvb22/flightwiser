@@ -289,6 +289,8 @@ function MetaTile({
             opacity: 0.8,
             textTransform: "uppercase",
             letterSpacing: isMobile ? 0.2 : 0.4,
+            // Phone widths only: the name is centred across the tile.
+            textAlign: isMobile ? "center" : undefined,
             whiteSpace: "nowrap",
           }}
         >
