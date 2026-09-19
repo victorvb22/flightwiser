@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsMobile } from "../../lib/useIsMobile";
 import { geoMercator, geoPath, type GeoProjection } from "d3-geo";
 import { feature, mesh } from "topojson-client";
 import type { FeatureCollection, MultiLineString } from "geojson";
@@ -255,6 +256,12 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
   const { zoom, pan } = view;
   const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef(false);
+  // Every finger/pointer currently down, in client coordinates. A mouse
+  // only ever has one entry here, so desktop behaviour (single-pointer drag
+  // pan) is unchanged — a second entry only appears with a second finger.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ dist: number; mid: { x: number; y: number } } | null>(null);
+  const isMobile = useIsMobile();
   const lastPosRef = useRef({ x: 0, y: 0 });
 
   // Fresh view whenever a different flight is loaded.
@@ -408,27 +415,36 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
   // treat wheel listeners as passive by default, in which case
   // preventDefault() is silently ignored and the page scrolls underneath
   // instead of just the map zooming.
+  // Shared by the wheel (desktop) and pinch (touch) gestures: multiplies the
+  // zoom by `factor`, keeping the view-box point (mx, my) fixed on screen.
+  // Kept in a ref so the wheel listener below — registered once per
+  // projection/minZoom, not per render — always calls the latest closure.
+  function applyZoom(mx: number, my: number, factor: number) {
+    const [flightTx, flightTy] = projection.translate();
+    setView((v) => {
+      const raw = v.zoom * factor;
+      if (raw <= minZoom) {
+        // Snap to a properly centred whole-world view rather than
+        // whatever pan the cursor-anchored math would otherwise leave.
+        return { zoom: minZoom, pan: { x: WORLD_TRANSLATE[0] - minZoom * flightTx, y: WORLD_TRANSLATE[1] - minZoom * flightTy } };
+      }
+      const nz = Math.min(raw, MAX_ZOOM);
+      // Anchor the point under the cursor: whatever local point is at
+      // (mx,my) before this tick must still be at (mx,my) after it.
+      const nextPan = { x: mx - (mx - v.pan.x) * (nz / v.zoom), y: my - (my - v.pan.y) * (nz / v.zoom) };
+      return { zoom: nz, pan: clampPan(nextPan, nz) };
+    });
+  }
+  const applyZoomRef = useRef(applyZoom);
+  applyZoomRef.current = applyZoom;
+
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    const [flightTx, flightTy] = projection.translate();
     function onWheelNative(event: WheelEvent) {
       event.preventDefault();
       const { x: mx, y: my } = toViewBox(event.clientX, event.clientY);
-      const factor = Math.exp(-event.deltaY * 0.0015);
-      setView((v) => {
-        const raw = v.zoom * factor;
-        if (raw <= minZoom) {
-          // Snap to a properly centred whole-world view rather than
-          // whatever pan the cursor-anchored math would otherwise leave.
-          return { zoom: minZoom, pan: { x: WORLD_TRANSLATE[0] - minZoom * flightTx, y: WORLD_TRANSLATE[1] - minZoom * flightTy } };
-        }
-        const nz = Math.min(raw, MAX_ZOOM);
-        // Anchor the point under the cursor: whatever local point is at
-        // (mx,my) before this tick must still be at (mx,my) after it.
-        const nextPan = { x: mx - (mx - v.pan.x) * (nz / v.zoom), y: my - (my - v.pan.y) * (nz / v.zoom) };
-        return { zoom: nz, pan: clampPan(nextPan, nz) };
-      });
+      applyZoomRef.current(mx, my, Math.exp(-event.deltaY * 0.0015));
     }
     svg.addEventListener("wheel", onWheelNative, { passive: false });
     return () => svg.removeEventListener("wheel", onWheelNative);
@@ -448,14 +464,45 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
     return `hsl(${h.toFixed(0)} ${ALT_SAT}% ${l.toFixed(0)}%)`;
   }
 
+  function pinchState() {
+    const [a, b] = [...pointersRef.current.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+  }
+
   function handlePointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (pointersRef.current.size === 2) {
+      // Second finger down: switch from dragging to pinching.
+      draggingRef.current = false;
+      setIsDragging(false);
+      pinchRef.current = pinchState();
+      return;
+    }
     draggingRef.current = true;
     setIsDragging(true);
     lastPosRef.current = toViewBox(event.clientX, event.clientY);
-    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      const next = pinchState();
+      const prev = pinchRef.current;
+      pinchRef.current = next;
+      if (prev.dist > 0 && next.dist > 0) {
+        const { x: mx, y: my } = toViewBox(next.mid.x, next.mid.y);
+        applyZoom(mx, my, next.dist / prev.dist);
+        // Two fingers sliding together pan the map too, like a native one.
+        const before = toViewBox(prev.mid.x, prev.mid.y);
+        const dx = mx - before.x;
+        const dy = my - before.y;
+        setView((v) => ({ ...v, pan: clampPan({ x: v.pan.x + dx, y: v.pan.y + dy }, v.zoom) }));
+      }
+      return;
+    }
     const { x, y } = toViewBox(event.clientX, event.clientY);
     if (draggingRef.current) {
       const dx = x - lastPosRef.current.x;
@@ -468,7 +515,18 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
     setHoverIdx(nearestIndex(points, (x - pan.x) / zoom, (y - pan.y) / zoom));
   }
 
-  function endDrag() {
+  function endDrag(event?: React.PointerEvent<SVGSVGElement>) {
+    if (event) pointersRef.current.delete(event.pointerId);
+    pinchRef.current = null;
+    // One finger left after a pinch: carry on as a drag from where it is,
+    // rather than leaving the map stuck until the next touch.
+    if (pointersRef.current.size === 1) {
+      const [remaining] = [...pointersRef.current.values()];
+      lastPosRef.current = toViewBox(remaining.x, remaining.y);
+      draggingRef.current = true;
+      setIsDragging(true);
+      return;
+    }
     draggingRef.current = false;
     setIsDragging(false);
   }
@@ -492,6 +550,10 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
   const heading = arrived ? currentHeading(trajectoire) : segHeading;
   const accent = `hsl(${hue.toFixed(0)} 85% 62%)`;
   const inv = 1 / zoom; // counter-scale so strokes/markers stay a constant size on screen at any zoom
+  // The 960-unit-wide view box is drawn at roughly a third of that on a
+  // phone, which shrinks the city names to a few pixels — scaled up there so
+  // they read at about the size they have on desktop.
+  const cityLabelScale = isMobile ? 2.6 : 1;
 
   return (
     <section>
@@ -598,7 +660,7 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
             {/* origin */}
             <circle cx={points[0].x} cy={points[0].y} r={4 * inv} fill="var(--bg)" stroke="var(--text-muted)" strokeWidth={1.5 * inv} />
             {origineVille && (
-              <g transform={`translate(${points[0].x} ${points[0].y}) scale(${inv})`} opacity={0.75}>
+              <g transform={`translate(${points[0].x} ${points[0].y}) scale(${inv * cityLabelScale})`} opacity={0.75}>
                 <text
                   x={9}
                   y={-8}
@@ -617,7 +679,7 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
               </g>
             )}
             {destinationVille && arrived && (
-              <g transform={`translate(${last.x} ${last.y}) scale(${inv})`} opacity={0.75}>
+              <g transform={`translate(${last.x} ${last.y}) scale(${inv * cityLabelScale})`} opacity={0.75}>
                 <text
                   x={9}
                   y={-8}
@@ -697,7 +759,9 @@ export function VueTrajectoire({ trajectoire, severity = null, enVol = false, or
         <div aria-live="polite" style={{ fontFamily: "var(--font-mono)", color: hover ? "var(--text)" : "var(--text-faint)" }}>
           {hover
             ? `${formatTime(hover.timestamp)}  ·  ${hover.altitude !== null ? `${Math.round(hover.altitude)} m` : "alt —"}  ·  ${hover.vitesse !== null ? `${Math.round(hover.vitesse * 3.6)} km/h` : "spd —"}`
-            : "hover the path  ·  scroll to zoom  ·  ←/→ to scrub"}
+            : isMobile
+              ? "pinch to zoom"
+              : "hover the path  ·  scroll to zoom  ·  ←/→ to scrub"}
         </div>
       </div>
 

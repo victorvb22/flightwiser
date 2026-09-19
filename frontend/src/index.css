@@ -148,13 +148,18 @@ a {
     margin-left: 0;
     margin-top: 10px;
     display: flex;
+    align-items: center;
     justify-content: flex-end;
   }
 
-  /* Mirrored to the button's left instead of its right. */
+  /* A normal flex item sitting just before the button in the row (the
+     markup renders it first), not an absolutely positioned one: with the
+     wrapper above no longer position:absolute, an absolute label would
+     anchor to the outer form-wide container instead of to the button, and
+     land far to the left of it rather than directly beside it. */
   .random-filter-label {
-    left: auto;
-    right: 100%;
+    position: static;
+    transform: none;
     margin-left: 0;
     margin-right: 10px;
   }

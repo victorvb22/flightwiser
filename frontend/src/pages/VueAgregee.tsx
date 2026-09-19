@@ -10,6 +10,7 @@ import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
 import type { Categorie, HistoryFlightEntry } from "../services/api";
 import { severityColor, worstSeverity } from "../lib/severity";
 import { useAppData } from "../lib/AppDataContext";
+import { useIsMobile } from "../lib/useIsMobile";
 
 type FeatureKey = "anomalie" | "ecart" | "directness";
 type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "calcule_le";
@@ -138,6 +139,23 @@ export function VueAgregee() {
   // going blank and refetching every time. This component itself still
   // fully unmounts/remounts on navigation as before, so the title's own
   // split-flap animation below still replays on every visit regardless.
+  const isMobile = useIsMobile();
+  // The table is wider than a phone screen (8 columns) and scrolls
+  // horizontally inside its own box, so an open flight's panel can't just
+  // fill the table's width — it would run off-screen. On mobile it's sized
+  // from the scroll box's own visible width instead, and stays put
+  // (sticky) while the table scrolls sideways underneath.
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
+  const [scrollBoxWidth, setScrollBoxWidth] = useState(0);
+  useEffect(() => {
+    const el = scrollBoxRef.current;
+    if (!el) return;
+    const measure = () => setScrollBoxWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
   const { history: historyState, refreshHistory } = useAppData();
   const history = historyState.entries ?? [];
   const loadError = historyState.error;
@@ -342,7 +360,7 @@ export function VueAgregee() {
         ) : filtered.length === 0 ? (
           <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>No flight matches this filter.</p>
         ) : (
-          <div style={{ maxHeight: 560, overflowY: "auto" }}>
+          <div ref={scrollBoxRef} style={{ maxHeight: 560, overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -400,8 +418,12 @@ export function VueAgregee() {
                                   of it. */}
                               <div
                                 style={{
-                                  maxWidth: "50%",
-                                  minWidth: 340,
+                                  ...(isMobile
+                                    ? // Fills the visible box, leaving the same 8px
+                                      // (the cell's own padding) on the right as on
+                                      // the left.
+                                      { width: Math.max(scrollBoxWidth - 16, 0), boxSizing: "border-box", position: "sticky", left: 8 }
+                                    : { maxWidth: "50%", minWidth: 340 }),
                                   // Worst of the flight's three scores frames
                                   // the whole panel — same "which diagnostic
                                   // is driving concern" signal as the Search

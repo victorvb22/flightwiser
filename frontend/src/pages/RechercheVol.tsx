@@ -254,7 +254,9 @@ function MetaTile({
       style={{
         position: "relative",
         overflow: "hidden",
-        padding: "12px 12px",
+        // Tighter on a phone-width screen: six tiles share one row there,
+        // so every horizontal pixel of padding costs value/unit room.
+        padding: isMobile ? "10px 6px" : "12px 12px",
         border: "1px solid var(--border)",
         // Same background as the trajectory/diagnostic cards — no separate
         // tint of its own.
@@ -282,11 +284,11 @@ function MetaTile({
       <div style={{ position: "relative", minWidth: 0 }}>
         <div
           style={{
-            fontSize: isMobile ? 8 : 10,
+            fontSize: isMobile ? 7 : 10,
             color: "#fff",
             opacity: 0.8,
             textTransform: "uppercase",
-            letterSpacing: 0.4,
+            letterSpacing: isMobile ? 0.2 : 0.4,
             whiteSpace: "nowrap",
           }}
         >
@@ -306,7 +308,10 @@ function MetaTile({
             style={{
               display: "inline-block",
               fontFamily: "var(--font-mono)",
-              fontSize: 18,
+              // Same value size for all six tiles on a phone (not sized per
+              // tile), chosen so the widest reading — a 5-digit altitude
+              // plus its unit — still fits inside the tile.
+              fontSize: isMobile ? 10 : 18,
               fontWeight: 700,
               color: "#fff",
               whiteSpace: "nowrap",
@@ -315,7 +320,16 @@ function MetaTile({
           {/* Shown regardless of whether the value is known yet, so the
               unit's position never shifts once the real reading arrives. */}
           {unit && (
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13.5, fontWeight: 400, color: "var(--text)", opacity: 0.45, marginLeft: 8 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: isMobile ? 7 : 13.5,
+                fontWeight: 400,
+                color: "var(--text)",
+                opacity: 0.45,
+                marginLeft: isMobile ? 2 : 8,
+              }}
+            >
               {unit}
             </span>
           )}
@@ -378,6 +392,7 @@ function TrajectoryReveal({ vol }: { vol: FlightResponse | null }) {
 }
 
 function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
+  const isMobile = useIsMobile();
   const altitude = vol?.altitude_actuelle != null ? `${Math.round(vol.altitude_actuelle)}` : "-----";
   const vitesse = vol?.vitesse_actuelle != null ? `${Math.round(vol.vitesse_actuelle * 3.6)}` : "---";
   return (
@@ -387,7 +402,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
     // Each placeholder's dash count is chosen once to roughly match that
     // field's typical real length (e.g. a 4-letter ICAO code, a 3-digit
     // speed), so the board doesn't visibly resize once real data lands.
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: isMobile ? 6 : 10 }}>
       <MetaTile
         label="Aircraft type"
         mobileLabel="Aircraft"
@@ -652,7 +667,7 @@ export function RechercheVol() {
           )}
         </h1>
         <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>
-          Real trajectory, deviation vs. optimal profile, anomaly score, route directness — from live ADS-B data.
+          Real trajectory, deviation vs. optimal profile, anomaly score, route directness — from pre-recorded ADS-B data.
         </p>
       </div>
 

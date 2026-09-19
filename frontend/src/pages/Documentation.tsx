@@ -52,30 +52,40 @@ const CATEGORY_LABELS: Record<string, string> = {
   helicoptere: "Helicopter",
 };
 
+// Horizontal padding of a card on a phone-width screen (cardStyle's 24
+// everywhere else) — a Table there bleeds out by exactly this much on both
+// sides (negative margin), so it spans the card edge to edge instead of
+// staying inset by its padding like the paragraphs do.
+const CARD_PADDING_MOBILE = 12;
+
 function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
+  const isMobile = useIsMobile();
+  const cellPadding = isMobile ? "6px 6px" : "6px 10px";
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginTop: 8, marginBottom: 12 }}>
-      <thead>
-        <tr style={{ textAlign: "left", color: "var(--text-faint)", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
-          {head.map((h) => (
-            <th key={h} style={{ padding: "6px 10px", borderBottom: "1px solid var(--border-strong)" }}>
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody style={{ fontFamily: "var(--font-mono)" }}>
-        {rows.map((row, i) => (
-          <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-            {row.map((cell, j) => (
-              <td key={j} style={{ padding: "6px 10px" }}>
-                {cell}
-              </td>
+    <div style={isMobile ? { margin: `0 -${CARD_PADDING_MOBILE}px`, overflowX: "auto" } : undefined}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12.5 : 13.5, marginTop: 8, marginBottom: 12 }}>
+        <thead>
+          <tr style={{ textAlign: "left", color: "var(--text-faint)", fontSize: isMobile ? 10.5 : 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {head.map((h) => (
+              <th key={h} style={{ padding: cellPadding, borderBottom: "1px solid var(--border-strong)" }}>
+                {h}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody style={{ fontFamily: "var(--font-mono)" }}>
+          {rows.map((row, i) => (
+            <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+              {row.map((cell, j) => (
+                <td key={j} style={{ padding: cellPadding }}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -241,8 +251,9 @@ function DensityCurve({ label, params }: { label: string; params: AnomalieCatego
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const isMobile = useIsMobile();
   return (
-    <div style={cardStyle}>
+    <div style={isMobile ? { ...cardStyle, padding: `${cardStyle.padding}px ${CARD_PADDING_MOBILE}px` } : cardStyle}>
       <h3 style={cardTitleStyle}>{title}</h3>
       {children}
     </div>
