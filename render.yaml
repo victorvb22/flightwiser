@@ -8,16 +8,11 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     envVars:
-      - key: OPENSKY_CLIENT_ID
-        sync: false
-      - key: OPENSKY_CLIENT_SECRET
-        sync: false
-      # Cloudflare Worker relay (cloudflare-relay/worker.js) — Render's
-      # outbound network can't reach opensky-network.org directly.
-      - key: OPENSKY_RELAY_URL
-        sync: false
-      - key: OPENSKY_RELAY_SECRET
-        sync: false
+      # OpenSky itself (OPENSKY_CLIENT_ID/SECRET, OPENSKY_RELAY_URL/SECRET) is
+      # deliberately absent here: the deployed backend no longer calls it at
+      # all (see README section Limitations) — it only reads flight_pool.jsonl,
+      # bundled with the deploy, and Supabase. Those variables still matter
+      # locally, for scripts/collect_opensky_pool.py (backend/.env).
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY

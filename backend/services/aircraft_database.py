@@ -1,19 +1,21 @@
-"""Base aéronefs publique OpenSky (icao24 -> immatriculation/typecode),
-utilisée à la fois par le prétraitement batch (scripts/preprocess_historical.py)
-et par la résolution d'identifiant en direct (pipeline.py).
+"""OpenSky's public aircraft database (icao24 -> registration/typecode/
+icaoaircrafttype), used by the batch preprocessing
+(scripts/preprocess_historical.py), the pool collection
+(scripts/collect_opensky_pool.py), and building the categorization table
+(scripts/build_aircraft_categories.py).
 
-Chargée une fois en mémoire au premier accès (singleton module), comme
-models/anomalie.py charge son artefact une fois — c'est un fichier de ~94 Mo,
-pas quelque chose à relire à chaque requête.
+Loaded into memory once, on first access (module-level singleton), the same
+way models/anomalie.py loads its artifact once — this is a ~94 MB file, not
+something to re-read on every request.
 
-BUNDLED_PATH (un snapshot déjà filtré aux 4 colonnes utiles, committé dans le
-repo) est essayé en premier, avant tout téléchargement : servir une requête
-en dépend en direct (get_typecode/get_registration/is_helicopter), donc
-attendre un fetch de 94 Mo — voire échouer dessus — au milieu d'une réponse
-HTTP n'est pas acceptable. Observé en prod (Render) : timeout de connexion
-vers opensky-network.org, 500 sur le premier appel touchant la base. Le
-téléchargement live reste le repli pour un poste de dev qui n'a pas encore
-généré le snapshot (voir son commentaire dans .gitignore)."""
+BUNDLED_PATH (a snapshot already trimmed to the 4 useful columns, committed
+to the repo) is tried first, before any download: serving a request depends
+on it directly (get_typecode/get_registration), so waiting on a 94 MB
+fetch — or failing on one — in the middle of an HTTP response isn't
+acceptable. Observed in prod (Render): connection timeout to
+opensky-network.org, 500 on the first call touching the database. The live
+download stays as the fallback for a dev machine that hasn't generated the
+snapshot yet (see its comment in .gitignore)."""
 
 from pathlib import Path
 
@@ -36,7 +38,7 @@ _aircraft_db: pd.DataFrame | None = None
 def download_if_missing(url: str, cache_path: Path) -> Path:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     if not cache_path.exists():
-        print(f"Téléchargement de {url} ...")
+        print(f"Downloading {url} ...")
         response = requests.get(url, timeout=60)
         response.raise_for_status()
         cache_path.write_bytes(response.content)
@@ -69,8 +71,8 @@ def _get_aircraft_db() -> pd.DataFrame:
 
 
 def resolve_icao24_by_registration(registration: str) -> str | None:
-    """Recherche exacte (insensible à la casse/espaces) d'un icao24 à partir
-    d'une immatriculation, ex. "F-GKXA". None si aucune correspondance."""
+    """Exact (case/whitespace-insensitive) lookup of an icao24 from a
+    registration, e.g. "F-GKXA". None if no match."""
     normalized = registration.strip().upper()
     db = _get_aircraft_db()
     matches = db[db["registration"].str.upper() == normalized]
@@ -97,16 +99,3 @@ def get_registration(icao24: str) -> str | None:
     if matches.empty or pd.isna(matches.iloc[0]["registration"]) or matches.iloc[0]["registration"] == "":
         return None
     return matches.iloc[0]["registration"]
-
-
-def is_helicopter(icao24: str) -> bool:
-    """True si `icaoaircrafttype` (désignateur ICAO Doc 8643 : premier
-    caractère = catégorie — H = hélicoptère/giravion) commence par "H" pour
-    cet icao24. False si l'icao24 est absent de la base ou que le champ est
-    vide — pas d'hypothèse par défaut, cohérent avec get_typecode/
-    get_registration qui renvoient None plutôt que de deviner."""
-    db = _get_aircraft_db()
-    matches = db[db["icao24"] == icao24.strip().lower()]
-    if matches.empty or pd.isna(matches.iloc[0]["icaoaircrafttype"]):
-        return False
-    return matches.iloc[0]["icaoaircrafttype"].startswith("H")

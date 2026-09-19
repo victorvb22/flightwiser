@@ -1,17 +1,17 @@
-"""Formes typées des tables Supabase/Postgres (brief section 9). Schéma réel
-dans db/schema.sql (à coller une fois dans le SQL Editor Supabase).
+"""Typed shapes for the Supabase/Postgres tables (brief section 9). Real
+schema lives in db/schema.sql (paste it once into the Supabase SQL Editor).
 
-Pas de SQLAlchemy : services/cache.py n'a besoin que d'un get/upsert par clé
-sur une seule table, couvert directement par des requêtes REST (PostgREST) —
-un ORM n'apporterait rien ici. Ces TypedDict servent uniquement à typer les
-échanges dans cache.py.
+No SQLAlchemy: services/cache.py only needs a get/upsert by key on a single
+table, covered directly by REST requests (PostgREST) — an ORM wouldn't add
+anything here. These TypedDicts only exist to type the exchanges in
+cache.py.
 """
 
 from typing import Any, TypedDict
 
 
 class FlightCacheRow(TypedDict):
-    id: str  # icao24 + date UTC, ex. "39de4e_2026-09-16"
+    id: str  # icao24 + UTC date, e.g. "39de4e_2026-09-16"
     statut: str
     trajectoire: list[dict[str, Any]]
     ecart_trajectoire: dict[str, Any] | None
