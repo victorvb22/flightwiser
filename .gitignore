@@ -3,6 +3,9 @@
 *.env
 !.env.example
 
+# Internal brief — never part of any push (explicit, standing instruction).
+flightwiser-brief.md
+
 # Raw / regenerable data
 data/raw/
 data/processed/
@@ -10,14 +13,20 @@ data/processed/
 # above) — only the large raw downloads within it are. A directory-level
 # ignore (`data/reference/`) would have blocked git from ever descending
 # into it, making a `!`-negation for a specific file inside it a no-op —
-# git's own documented limitation, not a typo. The two *_trimmed.parquet
-# files ARE meant to be committed: pre-processed snapshots bundled with the
-# deploy (services/aircraft_database.py, services/airports.py) — production
-# reads these instead of fetching ~94 Mo live from a third party as part of
+# git's own documented limitation, not a typo. Named individually rather
+# than `*.csv`: aircraft_categories.csv lives in this same directory and
+# — unlike these two — IS meant to be committed (a small, essential,
+# bundled artifact, cf. services/aircraft_category.py), so a blanket *.csv
+# pattern would have wrongly excluded it too. The two *_trimmed.parquet
+# files (generated from these CSVs) are also meant to be committed:
+# pre-processed snapshots bundled with the deploy
+# (services/aircraft_database.py, services/airports.py) — production reads
+# these instead of fetching ~94 Mo live from a third party as part of
 # serving a request (observed failing outright on Render: connection
-# timeout to opensky-network.org). Regenerate with
+# timeout to opensky-network.org). Regenerate everything with
 # scripts/generate_reference_snapshots.py when the upstream source changes.
-data/reference/*.csv
+data/reference/aircraft_database.csv
+data/reference/airports.csv
 
 # Python
 __pycache__/

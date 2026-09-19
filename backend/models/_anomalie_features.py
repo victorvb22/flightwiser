@@ -1,48 +1,24 @@
-"""Extraction des features résumées par vol pour le modèle d'anomalie
-(brief section 11). Partagé entre l'entraînement (scripts/train_anomalie.py)
-et le service (models/anomalie.py) pour éviter tout écart train/serve.
+"""Extracting per-flight summary features for the anomaly model (brief
+section 11). Shared between training (scripts/train_anomalie.py) and
+serving (models/anomalie.py) to avoid any train/serve mismatch.
 
-Chaque vol devient un exemple à features résumées sur l'ensemble de sa
-trajectoire (et non un score par point brut) : poolér les points bruts de
-tous les vols pour ajuster une gaussienne par variable mélangerait les
-phases de vol (montée/croisière/descente ont des distributions de vitesse
-verticale/altitude très différentes) et casserait l'hypothèse gaussienne.
+Each flight becomes one example with summary features over its whole
+trajectory (not a score per raw point): pooling raw points from every
+flight to fit one Gaussian per variable would mix flight phases (climb/
+cruise/descent have very different vertical-speed/altitude distributions)
+and break the Gaussian assumption.
 
-Features et transformations choisies empiriquement sur
-data/processed/flights_clean.parquet (vols atterris) : seul `duration_min`
-est fortement asymétrique (skew 1.73) et bénéficie clairement d'un log1p
-(skew -0.25 après). Les autres features restent modérément asymétriques
-après tentative de transformation sans réelle amélioration — traité comme
-une simplification MVP assumée plutôt que de sur-ajuster des transformations
-sans gain mesurable.
+Features and transforms chosen empirically on
+data/processed/flights_clean.parquet (landed flights): only `duration_min`
+is strongly skewed (skew 1.73) and clearly benefits from a log1p (skew -0.25
+afterward). The other features stay moderately skewed after attempting a
+transform, with no real improvement — treated as a deliberate MVP
+simplification rather than over-fitting transforms with no measurable gain.
 """
 
 import numpy as np
 
-from services.aircraft_category import categorize as _categorize_by_typecode
-from services.aircraft_database import is_helicopter
-
-# Anomaly-model-specific: a third category, isolated from petit_avion rather
-# than merged into it. A helicopter's baseline profile (hover, no fixed-wing
-# climb/cruise/descent phases) sits structurally outside a fixed-wing
-# distribution even for a perfectly ordinary flight — pooled with petit_avion,
-# it would risk flagging most of that population as anomalous regardless of
-# the actual flight, the opposite of what the score is for. Only this model
-# splits it out: models/directness.py keeps using
-# services.aircraft_category.categorize() directly (helicopters still fall
-# under petit_avion there), since that split hasn't been requested for it —
-# don't change the shared function itself, or directness's categories change
-# along with it.
-CATEGORIES = ["avion_ligne", "petit_avion", "helicoptere"]
-
-
-def categorize(typecode: str, icao24: str) -> str:
-    """Same OpenAP-recognition boundary as services.aircraft_category.
-    categorize, with a helicopter override checked first (via
-    services.aircraft_database.is_helicopter) — see module-level comment."""
-    if is_helicopter(icao24):
-        return "helicoptere"
-    return _categorize_by_typecode(typecode)
+from services.aircraft_category import CATEGORIES, categorize
 
 MIN_POINTS = 5
 
@@ -60,8 +36,9 @@ LOG1P_FEATURES = {"duration_min"}
 
 
 def extract_raw_features(waypoints: list[dict]) -> dict[str, float] | None:
-    """Features résumées, avant transformation. None si le vol n'a pas assez
-    de points ou manque totalement d'une des mesures nécessaires."""
+    """Summary features, before transformation. None if the flight doesn't
+    have enough points or is entirely missing one of the required
+    measurements."""
     if len(waypoints) < MIN_POINTS:
         return None
 
@@ -88,7 +65,7 @@ def extract_raw_features(waypoints: list[dict]) -> dict[str, float] | None:
 
 
 def apply_transforms(raw_features: dict[str, float]) -> dict[str, float]:
-    """Applique log1p aux features désignées dans LOG1P_FEATURES."""
+    """Applies log1p to the features listed in LOG1P_FEATURES."""
     return {
         name: np.log1p(value) if name in LOG1P_FEATURES else value
         for name, value in raw_features.items()
@@ -96,15 +73,15 @@ def apply_transforms(raw_features: dict[str, float]) -> dict[str, float]:
 
 
 def inverse_transform(name: str, value: float) -> float:
-    """Inverse de apply_transforms pour une seule feature — reconvertit une
-    moyenne apprise (échelle transformée) en unité brute affichable
-    (ex. minutes plutôt que log1p(minutes))."""
+    """Inverse of apply_transforms for a single feature — converts a learned
+    mean (transformed scale) back to a displayable raw unit (e.g. minutes
+    rather than log1p(minutes))."""
     return float(np.expm1(value)) if name in LOG1P_FEATURES else float(value)
 
 
 def extract_features(waypoints: list[dict]) -> dict[str, float] | None:
-    """Features résumées prêtes pour le modèle (transformées). None si le
-    vol n'a pas assez de données pour être scoré de façon fiable."""
+    """Summary features ready for the model (transformed). None if the
+    flight doesn't have enough data to be scored reliably."""
     raw = extract_raw_features(waypoints)
     if raw is None:
         return None

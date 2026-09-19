@@ -1,27 +1,29 @@
-"""Score de trajet direct (secondaire au modèle d'anomalie et au modèle
-d'écart — cf. _directness_features.py pour le rationnel) : rang percentile
-empirique du ratio distance grand-cercle / distance parcourue, par
-catégorie d'appareil (services.aircraft_category), contre la distribution
-d'entraînement de sa catégorie.
+"""Route directness score (secondary to the anomaly model and the deviation
+model — cf. _directness_features.py for the rationale): empirical percentile
+rank of the great-circle-distance / distance-flown ratio, per aircraft
+category (avion_ligne / jet_affaire / petit_avion / helicoptere, cf.
+services.aircraft_category — checked directly on real data: jet_affaire and
+petit_avion have meaningfully different ratio distributions, cf.
+aircraft_category.py's docstring), against its category's own training
+distribution.
 
-Pas de gaussienne ici, contrairement à models/anomalie.py : une seule
-feature scalaire déjà bornée (≤ 1) n'a rien à gagner de la machinerie
-multi-features (moyenne/écart-type/log-vraisemblance) construite pour
-combiner sept dimensions — un rang percentile empirique direct est plus
-simple et ne suppose aucune forme de distribution particulière (le ratio
-est naturellement asymétrique, plafonné à droite, ce qu'une gaussienne
-représenterait mal).
+No Gaussian here, unlike models/anomalie.py: a single, already-bounded (≤ 1)
+scalar feature has nothing to gain from the multi-feature machinery
+(mean/std/log-likelihood) built to combine seven dimensions — a direct
+empirical percentile rank is simpler and assumes no particular distribution
+shape (the ratio is naturally skewed, capped on the right, which a Gaussian
+would represent poorly).
 
-Paramètres appris hors ligne par scripts/train_directness.py et persistés
-dans artifacts/directness_params.json.
+Parameters learned offline by scripts/train_directness.py and persisted in
+artifacts/directness_params.json.
 
-Input  : trajectoire réelle (liste de points avec lat/lon) et le typecode
-          de l'appareil (pour choisir la catégorie).
-Output : {"score": float, "ratio": float} — score = rang percentile (0-1,
-          plus bas = trajet moins direct que la normale pour sa catégorie),
-          ratio = la valeur brute (0-1, 1 = parfaitement direct) pour
-          affichage. None si le signal n'est pas exploitable pour ce vol
-          (cf. _directness_features.extract_route_directness).
+Input:  real trajectory (list of points with lat/lon) and the aircraft's
+        typecode (to pick the category).
+Output: {"score": float, "ratio": float} — score = percentile rank (0-1,
+        lower = a less direct route than normal for its category), ratio =
+        the raw value (0-1, 1 = perfectly direct) for display. None if the
+        signal isn't usable for this flight (cf.
+        _directness_features.extract_route_directness).
 """
 
 import json
@@ -52,6 +54,9 @@ def compute(trajectoire: list[dict], typecode: str) -> dict[str, Any] | None:
     if ratio is None:
         return None
 
-    model = _models[categorize(typecode)]
+    category = categorize(typecode)
+    if category is None:
+        return None
+    model = _models[category]
     score = float(np.interp(ratio, model.breakpoints, model.percentiles) / 100.0)
     return {"score": score, "ratio": ratio}

@@ -128,15 +128,21 @@ def main():
 
     records = []
     n_insufficient = 0
-    for _, row in landed.iterrows():
-        waypoints = json.loads(row["waypoints"])
+    # itertuples(), pas iterrows() : pandas/pyarrow (string dtype "Arrow-backed"
+    # par défaut ici) plante en essayant d'homogénéiser toutes les colonnes en
+    # un seul tableau pour iterrows() dès que waypoints (chaînes JSON de
+    # plusieurs Ko) est mêlé à des colonnes de dtypes différents (callsign
+    # object, still_airborne bool) — itertuples() n'a pas besoin de ce
+    # tableau unique, donc ne déclenche pas la conversion qui plante.
+    for row in landed.itertuples(index=False):
+        waypoints = json.loads(row.waypoints)
         features = extract_features(waypoints)
         if features is None:
             n_insufficient += 1
             continue
-        features["icao24"] = row["icao24"]
-        features["callsign"] = row["callsign"]
-        features["categorie"] = categorize(row["typecode"], row["icao24"])
+        features["icao24"] = row.icao24
+        features["callsign"] = row.callsign
+        features["categorie"] = categorize(row.typecode)
         records.append(features)
 
     print(f"Vols avec features exploitables : {len(records)} ({n_insufficient} exclus, données insuffisantes)")

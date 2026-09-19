@@ -1,13 +1,12 @@
-"""Utilitaires partagés pour le modèle d'écart trajectoire (brief section 11) :
-résolution du type d'appareil auprès d'OpenAP, distance orthodromique de la
-trajectoire réelle, et segmentation de cette trajectoire en phases
-(montée/croisière/descente) via openap.phase.FlightPhase.
+"""Shared utilities for the trajectory-deviation model (brief section 11):
+resolving the aircraft type against OpenAP, great-circle distance of the
+real trajectory, and segmenting that trajectory into phases (climb/cruise/
+descent) via openap.phase.FlightPhase.
 
-Piège vérifié empiriquement (la docstring d'OpenAP dit le contraire) :
-`FlightGenerator.cruise(range_cr=...)` attend des MÈTRES, pas des kilomètres —
-la valeur par défaut interne (WRAP, en km) est convertie en mètres avant
-d'alimenter le même accumulateur `s`, mais une valeur passée explicitement ne
-l'est pas.
+Empirically verified gotcha (OpenAP's own docstring says otherwise):
+`FlightGenerator.cruise(range_cr=...)` expects METERS, not kilometers — the
+internal default value (WRAP, in km) is converted to meters before feeding
+the same `s` accumulator, but a value passed explicitly isn't.
 """
 
 import numpy as np
@@ -15,12 +14,12 @@ from openap.gen import FlightGenerator
 from openap.phase import FlightPhase
 
 MIN_POINTS = 5
-MIN_CRUISE_KM = 10.0  # plancher pour un vol trop court pour une vraie croisière (simplification MVP)
-# Plafond physique : le vol commercial non-stop le plus long fait ~17 000 km ;
-# au-delà, la distance calculée à partir des extrémités de la trajectoire est
-# forcément un artefact (point aberrant non filtré en amont), pas un vrai
-# vol — mieux vaut renoncer que de lancer une simulation OpenAP avec une
-# distance absurde (observé : provoque un MemoryError dans FlightGenerator.cruise).
+MIN_CRUISE_KM = 10.0  # floor for a flight too short to have a real cruise phase (MVP simplification)
+# Physical ceiling: the longest non-stop commercial flight is ~17,000 km;
+# beyond that, a distance computed from the trajectory's endpoints is
+# necessarily an artifact (an outlier point not filtered upstream), not a
+# real flight — better to give up than launch an OpenAP simulation with an
+# absurd distance (observed: causes a MemoryError in FlightGenerator.cruise).
 MAX_PLAUSIBLE_DISTANCE_KM = 20_000.0
 
 M_TO_FT = 3.280839895
@@ -41,18 +40,18 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
 
 def resolve_typecode(typecode: str) -> FlightGenerator | None:
-    """Générateur OpenAP pour ce typecode, ou None si OpenAP ne le reconnaît
-    pas (même table de synonymes que services.aircraft_category.categorize —
-    c'est d'ailleurs exactement la frontière qui définit "petit_avion" :
-    aucun typecode de cette catégorie n'a de modèle de performance ici).
+    """OpenAP generator for this typecode, or None if OpenAP doesn't
+    recognize it (same synonym table OpenAP itself uses — this overlaps with,
+    but is a narrower question than, services.aircraft_category.categorize:
+    "can this specific typecode be simulated," not "what category is it").
 
-    Ne retombe plus sur A320 : un vol "petit_avion" comparé à une simulation
-    A320 (hélicoptère y compris — OpenAP ne modélise pas la voilure tournante,
-    pas de vol stationnaire, pas de montée/descente classique) produisait un
-    score numérique d'apparence normale sans aucun sens physique. Le typecode
-    inconnu au niveau icao24 (pas de match dans aircraft_database.csv) est un
-    problème différent, réglé en amont dans le prétraitement — celui-ci
-    suppose un typecode déjà résolu."""
+    No longer falls back to A320: a flight compared against an A320
+    simulation it has nothing to do with (helicopters included — OpenAP
+    doesn't model rotary wings, no hover, no classic climb/descent) produced
+    a normal-looking numeric score with no physical meaning at all. An
+    icao24 with an unknown typecode (no match in aircraft_database.csv) is a
+    different problem, handled upstream in preprocessing — this function
+    assumes a typecode has already been resolved."""
     try:
         return FlightGenerator(ac=typecode.lower(), use_synonym=True)
     except ValueError:
@@ -60,23 +59,24 @@ def resolve_typecode(typecode: str) -> FlightGenerator | None:
 
 
 def trajectory_distance_km(trajectoire: list[dict]) -> float:
-    """Distance orthodromique entre le premier et le dernier point de la
-    trajectoire réelle — sert d'approximation de la distance totale du vol
-    (OpenAP ne connaît pas les aéroports)."""
+    """Great-circle distance between the real trajectory's first and last
+    point — used as an approximation of the flight's total distance (OpenAP
+    doesn't know about airports)."""
     first, last = trajectoire[0], trajectoire[-1]
     return float(haversine_km(first["lat"], first["lon"], last["lat"], last["lon"]))
 
 
 def label_real_phases(trajectoire: list[dict]) -> tuple[dict[str, list[dict]], dict[str, float]]:
-    """Segmente la trajectoire réelle en montée/croisière/descente via
-    openap.phase.FlightPhase. Points avec altitude ou vitesse_verticale
-    manquante exclus au préalable (même logique que le modèle d'anomalie).
+    """Segments the real trajectory into climb/cruise/descent via
+    openap.phase.FlightPhase. Points with missing altitude or
+    vitesse_verticale are excluded beforehand (same logic as the anomaly
+    model).
 
-    Retourne (points_par_phase, duree_par_phase). La durée est la somme des
-    intervalles entre points CONSÉCUTIFS partageant la même phase — pas
-    simplement (dernier - premier) de la liste de points, qui surestimerait
-    largement la durée si la phase n'est pas continue dans le temps (ex. un
-    point isolé mal classé loin des autres, ou un step-climb)."""
+    Returns (points_by_phase, duration_by_phase). Duration is the sum of
+    intervals between CONSECUTIVE points sharing the same phase — not simply
+    (last - first) of the point list, which would badly overestimate
+    duration if the phase isn't continuous in time (e.g. a single misclassified
+    point far from the others, or a step-climb)."""
     usable = [w for w in trajectoire if w.get("altitude") is not None and w.get("vitesse_verticale") is not None]
     points_by_phase: dict[str, list[dict]] = {"montee": [], "croisiere": [], "descente": []}
     duration_by_phase: dict[str, float] = {"montee": 0.0, "croisiere": 0.0, "descente": 0.0}
@@ -105,9 +105,9 @@ def label_real_phases(trajectoire: list[dict]) -> tuple[dict[str, list[dict]], d
 
 
 def summarize_real_phase(points: list[dict], duree_s: float, phase: str) -> dict[str, float] | None:
-    """Statistiques résumées d'une phase réelle, en unités SI (mètres, m/s) —
-    mêmes unités que les colonnes brutes `h`/`v`/`vs` d'OpenAP, donc aucune
-    conversion nécessaire pour la comparaison."""
+    """Summary statistics for a real phase, in SI units (meters, m/s) — same
+    units as OpenAP's own `h`/`v`/`vs` raw columns, so no conversion is
+    needed for comparison."""
     if not points:
         return None
     if phase == "croisiere":
@@ -122,8 +122,8 @@ def summarize_real_phase(points: list[dict], duree_s: float, phase: str) -> dict
 
 
 def summarize_sim_phase(df, phase: str) -> dict[str, float]:
-    """Statistiques résumées d'une phase simulée, à partir des colonnes
-    brutes h (m), v (m/s), vs (m/s) — déjà en SI, pas de conversion."""
+    """Summary statistics for a simulated phase, from the raw columns h (m),
+    v (m/s), vs (m/s) — already in SI, no conversion."""
     if phase == "croisiere":
         return {
             "altitude_moyenne": float(df["h"].mean()),

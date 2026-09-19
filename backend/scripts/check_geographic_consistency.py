@@ -1,18 +1,18 @@
-"""Vérifie que le modèle d'anomalie, entraîné sur des vols candidats Europe
-(cf. scripts/extract_historical_for_training.py), reste raisonnable pour un
-vol tiré au hasard n'importe où dans le monde — le tirage aléatoire de l'app
-n'est plus une recherche par proximité géographique, un vol hors Europe est
-donc un cas réel, pas hypothétique.
+"""Checks that the anomaly model, trained on Europe-candidate flights (cf.
+scripts/extract_historical_for_training.py), still holds up reasonably for a
+flight drawn at random anywhere in the world — the app's random draw is no
+longer a geographic-proximity search, so a non-Europe flight is a real case,
+not a hypothetical one.
 
-Pour avion_ligne et petit_avion (pas helicoptere, qui a son propre flag
-inconditionnel "out of the training scope", cf. models/anomalie.py — sans
-lien avec le résultat de cette vérification) : extrait un échantillon modeste
-de vols candidats hors Europe le même jour (27/06/2022, même source que
-l'entraînement), calcule leurs 7 features résumées (models/_anomalie_features)
-et compare moyenne/écart-type par feature à celles du modèle Europe entraîné
+For avion_ligne and petit_avion (not helicoptere, which has its own
+unconditional "out of the training scope" flag, cf. models/anomalie.py —
+unrelated to this check's result): extracts a modest sample of non-Europe
+candidate flights on the same day (2022-06-27, the same source as training),
+computes their 7 summary features (models/_anomalie_features), and compares
+mean/std per feature to those of the trained Europe model
 (models/artifacts/anomalie_params.json).
 
-Usage : python scripts/check_geographic_consistency.py --date 2022-06-27 --sample-size 300
+Usage: python scripts/check_geographic_consistency.py --date 2022-06-27 --sample-size 300
 """
 
 import argparse
@@ -44,32 +44,32 @@ from services.opensky_historical import (  # noqa: E402
 WORLD_BBOX = (-90.0, 90.0, -180.0, 180.0)
 ARTIFACT_PATH = BACKEND_DIR / "models" / "artifacts" / "anomalie_params.json"
 RANDOM_SEED = 0
-# Divergence "notable" : une moyenne hors-Europe à plus de ce nombre
-# d'écarts-types (Europe) de la moyenne Europe. 1.0 = à peu près la moitié de
-# la largeur typique de la distribution elle-même — un seuil conservateur,
-# pensé pour repérer un vrai décalage de population, pas du bruit d'échantillon.
+# "Notable" divergence: a non-Europe mean more than this many (Europe)
+# standard deviations from the Europe mean. 1.0 = roughly half the
+# distribution's own typical width — a conservative threshold, meant to
+# catch a real population shift, not sample noise.
 NOTABLE_Z_THRESHOLD = 1.0
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", required=True)
-    parser.add_argument("--sample-size", type=int, default=300, help="Vols hors-Europe échantillonnés (par catégorie visée, avant filtrage)")
+    parser.add_argument("--sample-size", type=int, default=300, help="Non-Europe flights sampled (per target category, before filtering)")
     args = parser.parse_args()
     date = args.date
 
-    print(f"Passe 1 — candidats monde pour {date} ...")
+    print(f"Pass 1 - world candidates for {date} ...")
     world_candidates = scan_candidates(date, WORLD_BBOX)
-    print(f"Passe 1 — candidats Europe pour {date} ...")
+    print(f"Pass 1 - Europe candidates for {date} ...")
     europe_candidates = scan_candidates(date, EUROPE_BBOX)
     non_europe_candidates = world_candidates - europe_candidates
-    print(f"{len(world_candidates)} candidats monde, {len(europe_candidates)} Europe, {len(non_europe_candidates)} hors-Europe.")
+    print(f"{len(world_candidates)} world candidates, {len(europe_candidates)} Europe, {len(non_europe_candidates)} non-Europe.")
 
     rng = random.Random(RANDOM_SEED)
     sample = set(rng.sample(sorted(non_europe_candidates), min(args.sample_size, len(non_europe_candidates))))
-    print(f"Échantillon hors-Europe : {len(sample)} icao24.")
+    print(f"Non-Europe sample: {len(sample)} icao24.")
 
-    print("Passe 2 — extraction des positions de l'échantillon ...")
+    print("Pass 2 - extracting sample positions ...")
     points_by_icao = extract_candidate_points(date, sample)
 
     records = []
@@ -77,30 +77,30 @@ def main():
         for segment in segment_flights(points):
             au_sol_values = {p[6] for p in segment}
             if True not in au_sol_values or False not in au_sol_values:
-                continue  # pas de transition air/sol -> vol pas exploitable (même filtre que l'extraction d'entraînement)
+                continue  # no air/ground transition -> flight not usable (same filter as the training extraction)
             trajectoire = build_trajectoire(segment)
             if trajectoire is None:
                 continue
             if trajectoire[-1]["au_sol"] is not True:
-                continue  # encore en vol -> hors périmètre (même filtre que train_anomalie.py)
+                continue  # still airborne -> out of scope (same filter as train_anomalie.py)
             raw = extract_raw_features(trajectoire)
             if raw is None:
                 continue
             typecode = get_typecode(icao24) or "A320"
-            records.append({"icao24": icao24, "categorie": categorize(typecode, icao24), **apply_transforms(raw)})
+            records.append({"icao24": icao24, "categorie": categorize(typecode), **apply_transforms(raw)})
 
     df = pd.DataFrame(records)
-    print(f"{len(df)} vols hors-Europe exploitables (sur {len(sample)} candidats échantillonnés).")
+    print(f"{len(df)} usable non-Europe flights (out of {len(sample)} sampled candidates).")
 
     europe_params = json.loads(ARTIFACT_PATH.read_text())["categories"]
 
     for category in CATEGORIES:
         if category == "helicoptere":
-            continue  # flag inconditionnel indépendant de ce test, cf. docstring du module
+            continue  # unconditional flag, independent of this test, cf. the module's docstring
         subset = df[df["categorie"] == category]
-        print(f"\n=== {category} : {len(subset)} vols hors-Europe exploitables ===")
+        print(f"\n=== {category}: {len(subset)} usable non-Europe flights ===")
         if len(subset) < 10:
-            print("Trop peu de vols hors-Europe échantillonnés pour cette catégorie pour conclure — augmenter --sample-size.")
+            print("Too few non-Europe flights sampled for this category to conclude anything — increase --sample-size.")
             continue
 
         europe_mean = europe_params[category]["mean"]
@@ -119,9 +119,9 @@ def main():
                 notable.append(feature)
 
         if notable:
-            print(f"  VERDICT : distributions divergentes sur {notable} — envisager un flag 'hors périmètre' pour {category}.")
+            print(f"  VERDICT: divergent distributions on {notable} — consider an 'out of scope' flag for {category}.")
         else:
-            print(f"  VERDICT : distributions comparables — pas de flag nécessaire pour {category}.")
+            print(f"  VERDICT: comparable distributions — no flag needed for {category}.")
 
 
 if __name__ == "__main__":
