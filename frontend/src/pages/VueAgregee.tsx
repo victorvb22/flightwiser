@@ -5,7 +5,7 @@ import { PulseRing } from "../components/PulseRing";
 import { WakeupBanner } from "../components/WakeupBanner";
 import { VueTrajectoire } from "../components/visualisations/VueTrajectoire";
 import { HistogrammeScores } from "../components/visualisations/HistogrammeScores";
-import { ScoreAnomalie } from "../components/visualisations/ScoreAnomalie";
+import { ScoreAnomalie, ANOMALY_TYPE_LABELS } from "../components/visualisations/ScoreAnomalie";
 import { JaugeEcart } from "../components/visualisations/JaugeEcart";
 import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
 import type { Categorie, HistoryFlightEntry } from "../services/api";
@@ -15,7 +15,17 @@ import { useIsMobile } from "../lib/useIsMobile";
 import { useBackendWakeup } from "../lib/useBackendWakeup";
 
 type FeatureKey = "anomalie" | "ecart" | "directness";
-type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "calcule_le";
+type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "type_anomalie" | "calcule_le";
+
+// "normal" (the fourth label the classifier can return) deliberately never
+// shows here, same convention as ScoreAnomalie.tsx's own tag: it means the
+// flagged score doesn't match any of the three known patterns, not that
+// nothing was computed -- indistinguishable from "no type available" in a
+// single table cell either way, so both collapse to the same "—".
+function anomalyTypeLabel(entry: HistoryFlightEntry): string | null {
+  const type = entry.anomalie?.type_anomalie;
+  return type ? (ANOMALY_TYPE_LABELS[type] ?? null) : null;
+}
 
 // A flight can legitimately appear more than once in the history (the same
 // aircraft searched again on a different day, cf. the cache key in
@@ -158,7 +168,7 @@ export function VueAgregee() {
   // split-flap animation below still replays on every visit regardless.
   const isMobile = useIsMobile();
   const wakingUp = useBackendWakeup();
-  // The table is wider than a phone screen (8 columns) and scrolls
+  // The table is wider than a phone screen (9 columns) and scrolls
   // horizontally inside its own box, so an open flight's panel can't just
   // fill the table's width — it would run off-screen. On mobile it's sized
   // from the scroll box's own visible width instead, and stays put
@@ -262,6 +272,14 @@ export function VueAgregee() {
         if (a.categorie === null) return 1;
         if (b.categorie === null) return -1;
         return dir * CATEGORY_LABELS[a.categorie].localeCompare(CATEGORY_LABELS[b.categorie]);
+      }
+      if (sortKey === "type_anomalie") {
+        const al = anomalyTypeLabel(a);
+        const bl = anomalyTypeLabel(b);
+        if (al === null && bl === null) return 0;
+        if (al === null) return 1;
+        if (bl === null) return -1;
+        return dir * al.localeCompare(bl);
       }
       // Numeric score columns: airborne flights have no score at all (null,
       // not just a low one) — they belong after every scored flight
@@ -388,6 +406,7 @@ export function VueAgregee() {
                   <SortHeader label="Category" sortKey="categorie" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortHeader label="Status" sortKey="statut" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortHeader label="Anomaly" sortKey="anomalie" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
+                  <SortHeader label="Anomaly type" sortKey="type_anomalie" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortHeader label="Deviation" sortKey="ecart" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortHeader label="Directness" sortKey="directness" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
                   <SortHeader label="Searched" sortKey="calcule_le" activeKey={sortKey} dir={sortDir} onClick={toggleSort} />
@@ -416,6 +435,7 @@ export function VueAgregee() {
                         <td style={{ padding: "8px", color: anomScore !== null ? severityColor(anomScore, 1) : "var(--text-faint)" }}>
                           {anomScore !== null ? anomScore.toFixed(3) : "—"}
                         </td>
+                        <td style={{ padding: "8px", color: "var(--text-muted)" }}>{anomalyTypeLabel(entry) ?? "—"}</td>
                         <td style={{ padding: "8px", color: ecartScore !== null ? severityColor(ecartScore, 0) : "var(--text-faint)" }}>
                           {ecartScore !== null ? ecartScore.toFixed(3) : "—"}
                         </td>
@@ -426,7 +446,7 @@ export function VueAgregee() {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={8} style={{ padding: "10px 8px" }}>
+                          <td colSpan={9} style={{ padding: "10px 8px" }}>
                             <ExpandingDetail key={key}>
                               {/* Half the table's width (was nearly full) —
                                   a 3-column side-by-side layout doesn't fit

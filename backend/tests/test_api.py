@@ -113,6 +113,33 @@ def test_history_shows_the_identifier_actually_searched_with(test_pool, monkeypa
     assert body[0]["identifiant"] == "RYR2PY"
 
 
+def test_history_drops_older_duplicate_searches_of_the_same_aircraft(test_pool, monkeypatch):
+    # Real bug report: the same aircraft searched again on a later day (its
+    # own flights_cache row, id = icao24_date -- a manual search by
+    # registration/callsign has no "already served" guard, unlike a random
+    # draw) showed up as a second line in the history instead of just
+    # updating the one that was already there. get_all_cached_flights orders
+    # by calcule_le desc, so the more recent row (2026-01-02) comes first --
+    # only it should survive.
+    older = {
+        "id": "4ca56b_2026-01-01",
+        "statut": "atterri",
+        "trajectoire": [],
+        "ecart_trajectoire": None,
+        "anomalie": None,
+        "directness": None,
+        "calcule_le": "2026-01-01T00:00:00+00:00",
+    }
+    newer = {**older, "id": "4ca56b_2026-01-02", "calcule_le": "2026-01-02T00:00:00+00:00"}
+    monkeypatch.setattr("services.cache.get_all_cached_flights", lambda: [newer, older])
+
+    response = client.get("/api/v1/flights/history")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["calcule_le"] == "2026-01-02T00:00:00+00:00"
+
+
 def test_search_history_endpoint_returns_a_list():
     # block_network makes cache.get_all_cached_flights() a silent empty
     # list -- this only checks the route wires that up correctly, not real
