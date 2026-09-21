@@ -5,6 +5,7 @@ import {
   getExampleIdentifiant,
   getSearchHistory,
   type AnomalieCategoryParams,
+  type FlightResponse,
   type HistoryFlightEntry,
 } from "../services/api";
 
@@ -41,15 +42,25 @@ interface AnomalieParamsState {
 
 interface AppDataContextValue {
   history: HistoryState;
-  /** Re-fetches the search history in the background. Called on every visit
-   * to the Aggregate view, and right after a search succeeds on the Search
-   * page — the second call is what lets a just-searched flight show up
-   * without the user having to leave and come back. A plain re-fetch rather
-   * than splicing the new flight in locally: `categorie` is resolved
-   * server-side (services/aircraft_category.py) from data the frontend
-   * doesn't have, so a locally-built entry could never be trusted to match
-   * what the backend would actually compute. */
+  /** Re-fetches the search history in the background — the eventually-
+   * consistent half of showing a just-searched flight (RechercheVol.tsx
+   * calls both this and addToHistory below, cf. its own comment). Called
+   * on every visit to the Aggregate view too. */
   refreshHistory: () => void;
+  /** Splices one flight into `history.entries` immediately, client-side —
+   * no network round trip, so the flight a search just found shows up in
+   * the Aggregate view the instant the search itself resolves, rather than
+   * waiting on a second request. Safe now in a way it wasn't originally:
+   * every field HistoryFlightEntry needs (`categorie` included) is already
+   * on FlightResponse (pipeline.py's `_flight_metadata` resolves it
+   * server-side either way, cf. api.ts), so this never has to guess at
+   * anything the backend itself computed — only `calcule_le` is a local
+   * approximation (the moment this function runs, not the server's own
+   * write time, which refreshHistory's follow-up call corrects to the
+   * real value once it resolves). Replaces any existing entry with the
+   * same identifiant rather than duplicating it, so the two rows don't
+   * both show up for the few hundred ms until that reconciliation lands. */
+  addToHistory: (vol: FlightResponse) => void;
   anomalieParams: AnomalieParamsState;
   refreshAnomalieParams: () => void;
   /** A real, not-yet-served pool identifier for the Search page's
@@ -129,6 +140,28 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  const addToHistory = useCallback((vol: FlightResponse) => {
+    const entry: HistoryFlightEntry = {
+      identifiant: vol.identifiant,
+      typecode: vol.typecode,
+      categorie: vol.categorie,
+      statut: vol.statut,
+      trajectoire: vol.trajectoire,
+      ecart_trajectoire: vol.ecart_trajectoire,
+      anomalie: vol.anomalie,
+      directness: vol.directness ?? null,
+      calcule_le: new Date().toISOString(),
+    };
+    setHistory((s) => ({
+      ...s,
+      // Same identifiant, not the same flight necessarily (cf. rowKey's
+      // own comment in VueAgregee.tsx) -- close enough for a display that
+      // self-corrects within one round trip either way, and simpler than
+      // threading icao24 through just for this.
+      entries: [entry, ...(s.entries ?? []).filter((e) => e.identifiant !== entry.identifiant)],
+    }));
+  }, []);
+
   // Same reasoning as refreshHistory above — Documentation.tsx's own mount
   // effect has the identical shape (calls this every visit, StrictMode
   // double-invokes it too).
@@ -188,7 +221,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppDataContext.Provider
-      value={{ history, refreshHistory, anomalieParams, refreshAnomalieParams, exampleIdentifiant, refreshExample }}
+      value={{ history, refreshHistory, addToHistory, anomalieParams, refreshAnomalieParams, exampleIdentifiant, refreshExample }}
     >
       {children}
     </AppDataContext.Provider>
