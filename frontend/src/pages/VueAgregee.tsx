@@ -17,6 +17,20 @@ import { useBackendWakeup } from "../lib/useBackendWakeup";
 type FeatureKey = "anomalie" | "ecart" | "directness";
 type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "calcule_le";
 
+// A flight can legitimately appear more than once in the history (the same
+// aircraft searched again on a different day, cf. the cache key in
+// services/cache.py) -- entry.identifiant alone is therefore NOT unique
+// across the list. calcule_le (when the cache row was actually computed)
+// is, in practice, always distinct even for the same identifiant. Using
+// bare identifiant as a React key/selection id here was exactly what broke
+// sorting: with duplicate keys, React can't tell which element goes with
+// which array entry any more once the order changes, so it reused stale
+// DOM rows instead of reordering them (reproduced directly: sorting left
+// leftover, wrongly-ordered rows above the correctly sorted list).
+function rowKey(entry: HistoryFlightEntry): string {
+  return `${entry.identifiant}::${entry.calcule_le}`;
+}
+
 const FEATURE_OPTIONS: { key: FeatureKey; label: string; good: 0 | 1 }[] = [
   { key: "anomalie", label: "Anomaly score", good: 1 },
   { key: "ecart", label: "Trajectory deviation", good: 0 },
@@ -275,7 +289,7 @@ export function VueAgregee() {
   // each of the three charts above — null (no selection, or that feature
   // has no score for this flight) means "highlight nothing", not "highlight
   // bin 0".
-  const selectedEntry = expandedId ? (history.find((h) => h.identifiant === expandedId) ?? null) : null;
+  const selectedEntry = expandedId ? (history.find((h) => rowKey(h) === expandedId) ?? null) : null;
 
   return (
     <div>
@@ -381,7 +395,8 @@ export function VueAgregee() {
               </thead>
               <tbody style={{ fontFamily: "var(--font-mono)" }}>
                 {filtered.map((entry) => {
-                  const isOpen = expandedId === entry.identifiant;
+                  const key = rowKey(entry);
+                  const isOpen = expandedId === key;
                   const anomScore = entry.anomalie?.score ?? null;
                   const ecartScore = entry.ecart_trajectoire?.score_global ?? null;
                   const dirScore = entry.directness?.score ?? null;
@@ -392,8 +407,8 @@ export function VueAgregee() {
                   ]);
                   const panelAccentColor = worst !== null ? severityColor(worst.score, worst.good) : "var(--border)";
                   return (
-                    <Fragment key={entry.identifiant}>
-                      <tr onClick={() => setExpandedId(isOpen ? null : entry.identifiant)} style={{ borderTop: "1px solid var(--border)", cursor: "pointer" }}>
+                    <Fragment key={key}>
+                      <tr onClick={() => setExpandedId(isOpen ? null : key)} style={{ borderTop: "1px solid var(--border)", cursor: "pointer" }}>
                         <td style={{ padding: "8px", fontWeight: 600 }}>{entry.identifiant}</td>
                         <td style={{ padding: "8px", color: "var(--text-muted)" }}>{entry.typecode ?? "—"}</td>
                         <td style={{ padding: "8px", color: "var(--text-muted)" }}>{entry.categorie ? CATEGORY_LABELS[entry.categorie] : "—"}</td>
@@ -412,7 +427,7 @@ export function VueAgregee() {
                       {isOpen && (
                         <tr>
                           <td colSpan={8} style={{ padding: "10px 8px" }}>
-                            <ExpandingDetail key={entry.identifiant}>
+                            <ExpandingDetail key={key}>
                               {/* Half the table's width (was nearly full) —
                                   a 3-column side-by-side layout doesn't fit
                                   cleanly at that width any more, so this is a
@@ -460,7 +475,7 @@ export function VueAgregee() {
                                   <p style={{ fontSize: 11.5, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 10px" }}>
                                     Trajectory anomaly
                                   </p>
-                                  <ScoreAnomalie anomalie={entry.anomalie} />
+                                  <ScoreAnomalie anomalie={entry.anomalie} enVol={entry.statut === "en_vol"} />
                                 </div>
                                 <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)", marginBottom: 16 }}>
                                   <p style={{ fontSize: 11.5, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 10px" }}>
@@ -472,7 +487,7 @@ export function VueAgregee() {
                                   <p style={{ fontSize: 11.5, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 10px" }}>
                                     Route directness
                                   </p>
-                                  <DirectnessGauge directness={entry.directness} />
+                                  <DirectnessGauge directness={entry.directness} enVol={entry.statut === "en_vol"} />
                                 </div>
                               </div>
                             </ExpandingDetail>
