@@ -927,7 +927,7 @@ export function RechercheVol() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
                     <div>
                       <h4 style={{ ...cardTitleStyle, fontSize: 12, marginBottom: 12 }}>Trajectory anomaly</h4>
-                      <ScoreAnomalie anomalie={vol.anomalie} />
+                      <ScoreAnomalie anomalie={vol.anomalie} enVol={vol.statut === "en_vol"} />
                     </div>
                     <div>
                       <h4 style={{ ...cardTitleStyle, fontSize: 12, marginBottom: 12 }}>Deviation vs. optimal profile</h4>
@@ -935,7 +935,7 @@ export function RechercheVol() {
                     </div>
                     <div>
                       <h4 style={{ ...cardTitleStyle, fontSize: 12, marginBottom: 12 }}>Route directness</h4>
-                      <DirectnessGauge directness={vol.directness} />
+                      <DirectnessGauge directness={vol.directness} enVol={vol.statut === "en_vol"} />
                     </div>
                   </div>
                 ) : (

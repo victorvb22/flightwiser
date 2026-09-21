@@ -74,9 +74,19 @@ function RingGauge({ score, color }: { score: number; color: string }) {
   );
 }
 
-export function ScoreAnomalie({ anomalie }: { anomalie: Anomalie | null }) {
+export function ScoreAnomalie({ anomalie, enVol = false }: { anomalie: Anomalie | null; enVol?: boolean }) {
   if (anomalie === null) {
-    return <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>Anomaly score not available (flight in progress).</p>;
+    // A landed flight can also legitimately have no score — pipeline.py
+    // only computes it when the aircraft's typecode resolves to one of the
+    // four known categories, cf. services/aircraft_category.categorize.
+    // "Flight in progress" would be a fabricated reason in that case
+    // (same distinction JaugeEcart.tsx already makes), so only claim it
+    // when it's actually true.
+    return (
+      <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>
+        {enVol ? "Anomaly score not available (flight in progress)." : "Anomaly score not available (aircraft type not recognized)."}
+      </p>
+    );
   }
 
   const color = severityColor(anomalie.score, 1);
