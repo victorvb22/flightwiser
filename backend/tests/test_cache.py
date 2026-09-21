@@ -25,6 +25,11 @@ def test_get_all_cached_flights_is_a_silent_empty_list_on_a_network_error():
     assert cache.get_all_cached_flights() == []
 
 
+def test_touch_flight_does_not_raise_on_a_network_error():
+    # Same best-effort policy as store_flight.
+    cache.touch_flight("does-not-matter")
+
+
 def test_store_flight_does_not_raise_on_a_network_error():
     # Must never surface a write failure to the caller (the user's response
     # is already computed) -- this call simply must not raise.

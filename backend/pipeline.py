@@ -49,6 +49,12 @@ def _serve_pool_entry(entry: dict, identifiant_affiche: str) -> dict:
     cache_id = cache.build_cache_id(icao24)
     cached = cache.get_cached_flight(cache_id)
     if cached is not None:
+        # Bumps calcule_le so this search shows up as recent in the
+        # Aggregate view's "Searched" column (cf. cache.touch_flight's own
+        # docstring) -- store_flight is deliberately never called again
+        # here, this is the one thing that still needs to change on a
+        # repeat search.
+        cache.touch_flight(cache_id)
         result = {"identifiant": identifiant_affiche, "source": "cache", **cached}
         return {**result, **_flight_metadata(icao24, result)}
 
