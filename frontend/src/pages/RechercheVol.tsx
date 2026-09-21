@@ -55,7 +55,15 @@ const buttonStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 8,
   whiteSpace: "nowrap",
-  transition: "background-color 300ms ease, color 300ms ease, border-color 300ms ease",
+  // Longer than most transitions on this page (was 300ms) — deliberately,
+  // to survive the frame-timing collision described where this style is
+  // swapped (RechercheVol's own rechercherAleatoire): even with that fixed,
+  // a bit more runway makes the fade read as smooth rather than snappy on
+  // a slower device. willChange hints the browser to give this button its
+  // own compositing layer, so its paint doesn't get bundled in with the
+  // surrounding cards/board repainting at the same time.
+  transition: "background-color 400ms ease, color 400ms ease, border-color 400ms ease",
+  willChange: "background-color, color, border-color",
 };
 
 const ghostButtonStyle: React.CSSProperties = {
@@ -606,16 +614,27 @@ export function RechercheVol() {
     try {
       const vol = await getRandomFlight(randomFilter ?? undefined);
       setEtat({ statut: "succes", vol });
-      // Once a flight has actually been found, the filter's job is done —
-      // clearing it drops the label and swaps the buttons back to normal
-      // Search-mode styling, rather than leaving Random flight looking
-      // "still armed" for a search that already ran.
-      setRandomFilter(null);
+      // Deferred a frame (both here and in `finally` below) rather than set
+      // in the same commit as the "succes" state above: that commit already
+      // kicks off the heaviest work on the page at once — the trajectory/
+      // diagnostic cards unfolding and the identifier board's split-flap
+      // animation starting — and measured directly (instrumented, not
+      // guessed), the button's own background/text transition was landing
+      // in that same busy frame and visibly stalling for ~150-270ms before
+      // it could even start, instead of fading immediately. Letting that
+      // first heavy frame commit and paint on its own, then flipping the
+      // buttons back a frame later, gives the color transition a clear run
+      // — most noticeable on mobile, where there's less headroom to absorb
+      // the collision. Once a flight has actually been found, the filter's
+      // job is done — clearing it drops the label and swaps the buttons
+      // back to normal Search-mode styling, rather than leaving Random
+      // flight looking "still armed" for a search that already ran.
+      requestAnimationFrame(() => setRandomFilter(null));
       refreshHistory();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
     } finally {
-      setRandomLoading(false);
+      requestAnimationFrame(() => setRandomLoading(false));
     }
   }
 
@@ -721,7 +740,7 @@ export function RechercheVol() {
                 Typing overrides this back to Search, since that's now the
                 action that's actually about to run. */}
             <button type="submit" disabled={etat.statut === "chargement"} style={randomActive ? ghostButtonStyle : buttonStyle}>
-              <Search size={16} color={randomActive ? "var(--green)" : "#04110c"} style={{ transition: "stroke 300ms ease" }} />
+              <Search size={16} color={randomActive ? "var(--green)" : "#04110c"} style={{ transition: "stroke 400ms ease" }} />
               Search
             </button>
           </form>
@@ -760,7 +779,7 @@ export function RechercheVol() {
                 disabled={etat.statut === "chargement"}
                 style={randomActive ? buttonStyle : ghostButtonStyle}
               >
-                <Shuffle size={16} color={randomActive ? "#04110c" : "var(--green)"} style={{ transition: "stroke 300ms ease" }} />
+                <Shuffle size={16} color={randomActive ? "#04110c" : "var(--green)"} style={{ transition: "stroke 400ms ease" }} />
                 Random flight
               </button>
               {showRandomMenu && (
