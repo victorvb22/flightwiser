@@ -481,7 +481,7 @@ export function VueAgregee() {
                                   <p style={{ fontSize: 11.5, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 10px" }}>
                                     Deviation vs. optimal profile
                                   </p>
-                                  <JaugeEcart ecart={entry.ecart_trajectoire} enVol={entry.statut === "en_vol"} />
+                                  <JaugeEcart ecart={entry.ecart_trajectoire} enVol={entry.statut === "en_vol"} categorie={entry.categorie} />
                                 </div>
                                 <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                                   <p style={{ fontSize: 11.5, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 10px" }}>

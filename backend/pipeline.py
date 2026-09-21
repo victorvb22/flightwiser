@@ -133,8 +133,14 @@ def _flight_metadata(icao24: str, result: dict) -> dict:
         # Only once landed: before touchdown, the nearest airport to the
         # current position isn't the real destination.
         destination_info = find_nearest_airport_info(dernier["lat"], dernier["lon"])
+    typecode = get_typecode(icao24)
     return {
-        "typecode": get_typecode(icao24),
+        "typecode": typecode,
+        # Same categorie a cache hit's own scores were computed against
+        # (cf. _serve_pool_entry) — re-derived here rather than threaded
+        # through the cache row, same reasoning as the rest of this
+        # metadata: a cheap local lookup, not worth a schema migration.
+        "categorie": categorize(typecode) if typecode is not None else None,
         "immatriculation": get_registration(icao24),
         "origine": origine_info["icao"] if origine_info else None,
         "origine_ville": origine_info["ville"] if origine_info else None,
