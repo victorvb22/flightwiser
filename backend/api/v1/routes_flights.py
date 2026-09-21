@@ -39,8 +39,21 @@ def get_search_history():
     """
     rows = cache.get_all_cached_flights()
     history = []
+    # A random draw can never re-serve an already-served icao24 (see
+    # services/pool_tracking.py), but a manual search by registration/
+    # callsign has no such guard -- the same aircraft searched again on a
+    # later day still gets its own flights_cache row (id = icao24_date), and
+    # every one of those rows would otherwise show up here as its own line.
+    # rows is already ordered calcule_le desc (get_all_cached_flights), so
+    # keeping only the first occurrence of each icao24 keeps the most recent
+    # search and drops the rest, rather than showing the same aircraft
+    # several times over.
+    seen_icao24: set[str] = set()
     for row in rows:
         icao24, _, _date = row["id"].partition("_")
+        if icao24 in seen_icao24:
+            continue
+        seen_icao24.add(icao24)
         typecode = get_typecode(icao24)
         # The pool's own callsign (entry["identifiant"]) first, not the
         # registration -- flights_cache only stores icao24+date (cf.

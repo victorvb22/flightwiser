@@ -7,7 +7,7 @@ import { useCountUp } from "../../lib/useCountUp";
 // is never shown as a tag (cf. ScoreAnomalie below): it means the flagged
 // score doesn't match any of these three known patterns, not that nothing
 // was computed.
-const ANOMALY_TYPE_LABELS: Record<string, string> = {
+export const ANOMALY_TYPE_LABELS: Record<string, string> = {
   go_around: "Go-around",
   holding: "Holding pattern",
   emergency_descent: "Emergency descent",
