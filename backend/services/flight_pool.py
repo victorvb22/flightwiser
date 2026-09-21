@@ -52,11 +52,12 @@ def _get_pool() -> list[dict[str, Any]]:
 def find_by_identifiant(identifiant: str) -> dict[str, Any] | None:
     """Exact (case/whitespace-insensitive) lookup by displayed identifier
     (callsign), registration, or icao24 — the same three ways of naming a
-    flight the live resolution used to accept (pipeline._resolve_icao24 +
-    callsign resolution). Registration isn't stored in the pool (derivable
-    from the icao24, as pipeline._flight_metadata already does) — looked up
-    here on the fly rather than risking going stale if the aircraft database
-    is regenerated."""
+    flight the old live-fetch resolution used to accept, before it was
+    replaced by the pool (cf. pipeline.py's own docstring). Registration
+    isn't stored in the pool (derivable from the icao24, as
+    pipeline._flight_metadata already does) — looked up here on the fly
+    rather than risking going stale if the aircraft database is
+    regenerated."""
     normalized = identifiant.strip().upper()
     for entry in _get_pool():
         icao24 = entry["_icao24"]

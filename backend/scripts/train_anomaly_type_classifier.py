@@ -1,37 +1,34 @@
-"""Entraînement offline du classifieur de TYPE d'anomalie (go-around, holding
-pattern, emergency descent) — un projet ML classique distinct
+"""Offline training of the anomaly-TYPE classifier (go-around, holding
+pattern, emergency descent) — a separate classical ML project
 ("ML classiques sur données de vol/classification model", notebooks
-01_dataset_construction.ipynb + 02_modelling.ipynb), reconstruit ici à
-l'identique pour être exploité par flightwiser.
+01_dataset_construction.ipynb + 02_modelling.ipynb), reconstructed here
+identically so flightwiser can use it.
 
-Ce script rejoue EXACTEMENT la partie multiclasse de 02_modelling.ipynb
-(mêmes colonnes, même split train/test, même grille d'hyperparamètres, mêmes
-graines aléatoires partout) — le modèle original n'a jamais été persisté
-(entraîné en mémoire dans le notebook), donc la seule façon de l'obtenir est
-de refaire tourner la même recette. Le binaire "normal vs atypique" du
-notebook original n'est PAS reconstruit ici : flightwiser a déjà son propre
-détecteur d'anomalie (models/anomalie.py, gaussienne par catégorie) — ce
-classifieur n'intervient qu'en aval, pour NOMMER le type d'anomalie d'un vol
-déjà flagué, pas pour décider s'il l'est.
+This script replays EXACTLY the multiclass part of 02_modelling.ipynb (same
+columns, same train/test split, same hyperparameter grid, same random seeds
+everywhere) — the original model was never persisted (trained in-memory in
+the notebook), so the only way to get it back is to rerun the same recipe.
+The original notebook's "normal vs. atypical" binary model is NOT
+reconstructed here: flightwiser already has its own anomaly detector
+(models/anomalie.py, a per-category Gaussian) — this classifier only steps
+in downstream, to NAME the anomaly type of a flight already flagged, not to
+decide whether it is one.
 
-Complémentaire à models/anomalie.py, pas un remplacement : entraîné
-uniquement sur des anomalies injectées SYNTHÉTIQUEMENT (rebonds d'altitude,
-circuits d'attente, descentes à taux constant — cf. le README du projet
-source) — jamais sur un vrai cas réel. Un score "normal" en sortie sur un
-vol que flightwiser a lui-même flagué anormal ne veut donc pas dire que rien
-n'est prédit : ça veut dire que l'anomalie ne correspond à aucun des trois
-patterns appris ici, ce qui reste une information honnête à afficher telle
-quelle plutôt que de forcer une étiquette.
+Complementary to models/anomalie.py, not a replacement: trained only on
+SYNTHETICALLY injected anomalies (altitude rebounds, holding circuits,
+constant-rate descents — cf. the source project's README) — never on a real
+case. A "normal" output on a flight flightwiser itself flagged anomalous
+therefore doesn't mean nothing was predicted: it means the anomaly doesn't
+match any of the three patterns learned here, which remains honest
+information to show as-is rather than forcing a label.
 
-Usage : python scripts/train_anomaly_type_classifier.py
-Vérification : comparer les métriques imprimées à celles publiées dans le
-README du projet source (accuracy 0.984, F1 par classe 1.000/0.991/0.984/
-0.957) — un écart notable signalerait une reconstruction infidèle plutôt
-qu'une simple variance d'entraînement.
+Usage: python scripts/train_anomaly_type_classifier.py
+Verification: compare the printed metrics against those published in the
+source project's README (accuracy 0.984, F1 per class 1.000/0.991/0.984/
+0.957) — a notable gap would signal an unfaithful reconstruction rather than
+plain training variance.
 """
 
-import json
-import sys
 from pathlib import Path
 
 import joblib
@@ -67,11 +64,11 @@ PARAM_GRID = {
 
 def main() -> None:
     df = pd.read_csv(DATASET_PATH)
-    print(f"Dataset : {df.shape[0]} vols, répartition anomaly_type :")
+    print(f"Dataset: {df.shape[0]} flights, anomaly_type breakdown:")
     print(df["anomaly_type"].value_counts())
 
     X = df[FEATURE_COLS].to_numpy()
-    y_binary = df["label"].to_numpy()  # sert uniquement au split stratifié, cf. notebook original
+    y_binary = df["label"].to_numpy()  # used only for the stratified split, cf. the original notebook
     y_multiclass = df["anomaly_type"].to_numpy(dtype=str)
 
     indices = np.arange(len(X))
@@ -88,25 +85,25 @@ def main() -> None:
         n_jobs=-1,
         verbose=1,
     )
-    print("\nGridSearchCV (multiclasse)...")
+    print("\nGridSearchCV (multiclass)...")
     grid_search.fit(X_train, y_train)
-    print(f"Meilleurs paramètres : {grid_search.best_params_}")
-    print(f"Meilleur F1 (CV)     : {grid_search.best_score_:.4f}")
+    print(f"Best params : {grid_search.best_params_}")
+    print(f"Best F1 (CV): {grid_search.best_score_:.4f}")
 
     model = grid_search.best_estimator_
     y_pred = model.predict(X_test)
 
-    print("\nRapport de classification (à comparer au README du projet source) :")
+    print("\nClassification report (compare against the source project's README):")
     print(classification_report(y_test, y_pred, target_names=LABELS))
 
     f1_per_class = f1_score(y_test, y_pred, average=None, labels=LABELS)
-    print("F1 par classe :")
+    print("F1 per class:")
     for label, score in zip(LABELS, f1_per_class):
         print(f"  {label:<20} : {score:.4f}")
 
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": model, "feature_cols": FEATURE_COLS, "labels": LABELS}, ARTIFACT_PATH)
-    print(f"\nModèle écrit dans {ARTIFACT_PATH}")
+    print(f"\nModel written to {ARTIFACT_PATH}")
 
 
 if __name__ == "__main__":

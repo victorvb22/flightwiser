@@ -1,20 +1,20 @@
 /**
- * Dégradé continu vert -> ambre -> rouge en fonction d'un score [0,1], plutôt
- * que des paliers fixes — un score continu mérite une couleur continue.
- * `good=1` (par défaut) : score haut = vert (ex. score_anomalie, où plus
- * haut = plus normal). Passer `good=0` pour l'inverse (ex. score_ecart, où
- * plus bas = meilleur).
+ * Continuous green -> amber -> red gradient driven by a [0,1] score, rather
+ * than fixed steps — a continuous score deserves a continuous color.
+ * `good=1` (default): a high score = green (e.g. score_anomalie, where
+ * higher = more normal). Pass `good=0` for the reverse (e.g. score_ecart,
+ * where lower = better).
  */
 
 function normalized(score: number, good: 0 | 1): number {
   return Math.max(0, Math.min(1, good === 1 ? score : 1 - score));
 }
 
-/** Teinte HSL (degrés) : vert ~160°, ambre ~45°, rouge ~355°. Passe par
- * l'orange, jamais par un hue "propre" à mi-chemin qui lirait comme une 3e
- * couleur non voulue. Exposée séparément pour que d'autres composants
- * puissent faire varier saturation/luminosité sur la même teinte (ex. la
- * trajectoire encode l'altitude en luminosité sur la teinte du statut). */
+/** HSL hue (degrees): green ~160°, amber ~45°, red ~355°. Passes through
+ * orange, never through a "clean" hue halfway that would read as an
+ * unintended 3rd color. Exposed separately so other components can vary
+ * saturation/lightness on the same hue (e.g. the trajectory encodes altitude
+ * as lightness on the status hue). */
 export function severityHue(score: number, good: 0 | 1 = 1): number {
   const t = normalized(score, good);
   return t > 0.5 ? 160 - (1 - t) * 2 * (160 - 45) : 45 - (0.5 - t) * 2 * 45;

@@ -1,34 +1,34 @@
-"""Type d'anomalie de trajectoire (go-around / holding pattern / emergency
-descent) pour un vol avion_ligne déjà flagué anormal par models/anomalie.py —
-un projet ML classique distinct ("ML classiques sur données de vol/
-classification model", notebooks 01_dataset_construction.ipynb +
-02_modelling.ipynb), reconstruit à l'identique par
-scripts/train_anomaly_type_classifier.py (cf. sa docstring) et persisté dans
-artifacts/anomaly_type_classifier.joblib.
+"""Trajectory anomaly type (go-around / holding pattern / emergency
+descent) for an avion_ligne flight already flagged anomalous by
+models/anomalie.py — a separate classical ML project ("ML classiques sur
+données de vol/classification model", notebooks
+01_dataset_construction.ipynb + 02_modelling.ipynb), reconstructed
+identically by scripts/train_anomaly_type_classifier.py (cf. its docstring)
+and persisted in artifacts/anomaly_type_classifier.joblib.
 
-Entraîné UNIQUEMENT sur des anomalies injectées synthétiquement (rebond
-d'altitude, circuit d'attente, descente à taux constant — jamais un vrai cas
-réel, cf. la docstring du script d'entraînement et le README du projet
-source). Un résultat "normal" ici sur un vol que flightwiser a lui-même
-flagué anormal est une information honnête — aucun des trois patterns appris
-ici ne correspond — pas un échec du modèle : à afficher tel quel côté
-frontend plutôt que de forcer une étiquette qui ne voudrait rien dire.
+Trained ONLY on synthetically injected anomalies (altitude rebound, holding
+circuit, constant-rate descent — never a real case, cf. the training
+script's docstring and the source project's README). A "normal" result here
+on a flight flightwiser itself flagged anomalous is honest information —
+none of the three learned patterns match — not a model failure: shown as-is
+on the frontend rather than forcing a label that wouldn't mean anything.
 
-Complètement indépendant de models/anomalie.py (qui décide SI un vol est
-anormal) : ce module décide seulement, en aval, QUEL type si applicable —
-comme ecart_trajectoire.py et directness.py, il ne se préoccupe pas non plus
-de la catégorie/du statut de l'appareil : c'est pipeline.py qui restreint
-l'appel à ce cas (vol avion_ligne atterri, cf. sa docstring).
+Completely independent of models/anomalie.py (which decides WHETHER a
+flight is anomalous): this module only decides, downstream, WHICH type if
+applicable — like ecart_trajectoire.py and directness.py, it also doesn't
+concern itself with the aircraft's category/status: pipeline.py is what
+restricts the call to this one case (a landed avion_ligne flight, cf. its
+docstring).
 
-Input : trajectoire réelle, même format interne que ecart_trajectoire.py/
+Input: the real trajectory, same internal format as ecart_trajectoire.py/
 anomalie.py (timestamp/lat/lon/altitude/cap/vitesse_verticale/au_sol/vitesse)
-— vitesse_verticale déjà lissée par services/trajectory_cleaning.py, ce qui
-joue exactement le rôle que la fenêtre glissante de 60s du notebook source
-jouait pour ses propres données OpenSky live (irrégulièrement échantillonnées) :
-aucune raison de réimplémenter ce lissage ici, l'entrée est déjà équivalente.
-Output : un des 4 libellés du modèle ("go_around", "holding",
-"emergency_descent", "normal"), ou None si la trajectoire n'a pas assez de
-points exploitables.
+— vitesse_verticale already smoothed by services/trajectory_cleaning.py,
+which plays exactly the role the source notebook's own 60s sliding window
+played for its own, irregularly sampled live OpenSky data: no reason to
+reimplement that smoothing here, the input is already equivalent.
+Output: one of the model's 4 labels ("go_around", "holding",
+"emergency_descent", "normal"), or None if the trajectory doesn't have
+enough usable points.
 """
 
 from pathlib import Path
@@ -45,16 +45,16 @@ _FEATURE_COLS = _artifact["feature_cols"]
 
 MIN_ALTITUDES = 10
 MIN_VERTRATES = 5
-# Cf. section "Real-Time Inference" du notebook source : au-delà de cet écart
-# entre deux points dans la zone d'approche, le rebond d'altitude calculé
-# reflète la répartition des points plutôt qu'une vraie remontée — mis à 0
-# plutôt que de produire un chiffre trompeur.
+# Cf. the source notebook's "Real-Time Inference" section: beyond this gap
+# between two points in the approach zone, the computed altitude rebound
+# reflects how the points are spaced rather than a real climb-back — set to
+# 0 rather than producing a misleading number.
 MAX_APPROACH_GAP_S = 300
-# Dernier 30% de la trajectoire — même découpage que le projet source pour
-# la zone d'approche (feature alt_rebound_max).
+# Last 30% of the trajectory — same split as the source project for the
+# approach zone (feature alt_rebound_max).
 APPROACH_FRACTION = 0.7
-# Un point est en "croisière" au-delà de 80% de l'altitude max atteinte —
-# même seuil que le projet source (feature cruise_duration_ratio).
+# A point is "in cruise" above 80% of the max altitude reached — same
+# threshold as the source project (feature cruise_duration_ratio).
 CRUISE_ALTITUDE_FRACTION = 0.8
 MAX_PLAUSIBLE_ALTITUDE_M = 15000
 
@@ -81,8 +81,8 @@ def _compute_features(trajectoire: list[dict], duration_min: float) -> dict[str,
     ]
     vrate_cruise_std = float(np.std(cruise_vrates)) if len(cruise_vrates) >= 3 else 0.0
 
-    # Changements de cap > 30° — gère le wrap-around 0/360 (ex. 355° -> 5° =
-    # 10° d'écart, pas 350°).
+    # Heading changes > 30° — handles the 0/360 wrap-around (e.g. 355° -> 5°
+    # = a 10° gap, not 350°).
     heading_changes = 0
     for i in range(1, len(headings)):
         delta = abs(headings[i] - headings[i - 1])
@@ -124,8 +124,8 @@ def _compute_features(trajectoire: list[dict], duration_min: float) -> dict[str,
 
 
 def compute(trajectoire: list[dict]) -> str | None:
-    """Un des 4 libellés du modèle, ou None si la trajectoire n'a pas assez
-    de points exploitables (cf. MIN_ALTITUDES/MIN_VERTRATES)."""
+    """One of the model's 4 labels, or None if the trajectory doesn't have
+    enough usable points (cf. MIN_ALTITUDES/MIN_VERTRATES)."""
     if not trajectoire:
         return None
     timestamps = [w["timestamp"] for w in trajectoire]

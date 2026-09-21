@@ -1,21 +1,21 @@
-"""Prétraitement du dataset historique brut (brief section 10).
+"""Preprocessing of the raw historical dataset (brief section 10).
 
-Applique, dans l'ordre :
-  1. dédupliquer les points consécutifs quasi identiques par vol
-  2. recalculer la vitesse (absente du CSV brut)
-  3. déduire l'aéroport de destination (proximité géographique)
-  4. enrichir le type d'appareil (jointure sur icao24)
+Applies, in order:
+  1. deduplicate near-identical consecutive points per flight
+  2. recompute speed (absent from the raw CSV)
+  3. infer the destination airport (geographic proximity)
+  4. enrich the aircraft type (joined on icao24)
 
-Entrée  : data/raw/flights_raw.csv (une ligne par vol, colonnes
-          icao24, callsign, departure_airport, takeoff_time, landing_time,
-          duration_min, n_waypoints, still_airborne, waypoints — waypoints
-          étant une liste de tuples (timestamp, lat, lon, altitude, cap,
-          vitesse_verticale, au_sol) sérialisée en texte).
-Sortie  : data/processed/flights_clean.parquet (une ligne par vol ; waypoints
-          sérialisé en JSON, avec vitesse ajoutée par point, plus les
-          colonnes destination_airport, typecode, type_confidence).
+Input:  data/raw/flights_raw.csv (one row per flight, columns
+        icao24, callsign, departure_airport, takeoff_time, landing_time,
+        duration_min, n_waypoints, still_airborne, waypoints — waypoints
+        being a list of tuples (timestamp, lat, lon, altitude, cap,
+        vitesse_verticale, au_sol) serialized as text).
+Output: data/processed/flights_clean.parquet (one row per flight; waypoints
+        serialized as JSON, with speed added per point, plus the
+        destination_airport, typecode, type_confidence columns).
 
-Usage : python scripts/preprocess_historical.py
+Usage: python scripts/preprocess_historical.py
 """
 
 import ast
@@ -31,8 +31,8 @@ import truststore
 truststore.inject_into_ssl()
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-# Nécessaire pour "python scripts/preprocess_historical.py" (sys.path[0] est
-# alors scripts/, pas backend/) ; sans effet si déjà lancé via -m.
+# Needed for "python scripts/preprocess_historical.py" (sys.path[0] is then
+# scripts/, not backend/); a no-op if already run via -m.
 sys.path.insert(0, str(BACKEND_DIR))
 
 from services.aircraft_database import load_aircraft_database  # noqa: E402
@@ -58,10 +58,10 @@ _BARE_NAN_RE = re.compile(r"\bnan\b")
 
 
 def parse_waypoints(raw: str) -> list[tuple]:
-    # Le CSV contient des NaN Python non quotés (repr(float('nan')) == "nan"),
-    # qui ne sont pas un littéral valide pour ast.literal_eval — on les
-    # convertit en None (valeur ADS-B manquante : altitude/cap/vitesse
-    # verticale, ou lat+lon ensemble quand la position n'a pas été reçue).
+    # The CSV contains unquoted Python NaNs (repr(float('nan')) == "nan"),
+    # which aren't a valid literal for ast.literal_eval — converted to None
+    # (missing ADS-B value: altitude/cap/vertical speed, or lat+lon together
+    # when no position was received).
     return ast.literal_eval(_BARE_NAN_RE.sub("None", raw))
 
 
@@ -108,12 +108,12 @@ def process_flight(row: pd.Series, airports: pd.DataFrame) -> dict:
 
 
 def main():
-    print(f"Lecture de {RAW_CSV} ...")
+    print(f"Reading {RAW_CSV} ...")
     raw = pd.read_csv(RAW_CSV)
-    print(f"{len(raw)} vols chargés.")
+    print(f"{len(raw)} flights loaded.")
 
     airports = load_airports()
-    print(f"{len(airports)} aéroports de référence chargés.")
+    print(f"{len(airports)} reference airports loaded.")
 
     cleaned = [process_flight(row, airports) for _, row in raw.iterrows()]
     clean_df = pd.DataFrame(cleaned)
@@ -132,9 +132,9 @@ def main():
     n_total = len(clean_df)
     n_with_destination = clean_df["destination_airport"].notna().sum()
     n_typecode_matched = matched_mask.sum()
-    print(f"Écrit {OUTPUT_PARQUET} ({n_total} vols).")
-    print(f"Destination déduite : {n_with_destination}/{n_total} ({n_with_destination / n_total:.1%})")
-    print(f"Typecode trouvé via OpenSky : {n_typecode_matched}/{n_total} ({n_typecode_matched / n_total:.1%})")
+    print(f"Wrote {OUTPUT_PARQUET} ({n_total} flights).")
+    print(f"Destination inferred: {n_with_destination}/{n_total} ({n_with_destination / n_total:.1%})")
+    print(f"Typecode found via OpenSky: {n_typecode_matched}/{n_total} ({n_typecode_matched / n_total:.1%})")
 
 
 if __name__ == "__main__":

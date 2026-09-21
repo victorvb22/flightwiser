@@ -87,13 +87,15 @@ def compute(trajectoire: list[dict], typecode: str) -> dict[str, Any] | None:
 
     fgen = resolve_typecode(typecode)
     if fgen is None:
-        # petit_avion (OpenAP doesn't recognize this typecode, by the same
-        # boundary services.aircraft_category.categorize uses) — no
-        # fixed-wing performance model exists to compare against, so no
-        # score rather than a silent, physically meaningless comparison
-        # against a substituted A320 (the previous behaviour). This applies
-        # to the whole category, not just helicopters: any typecode OpenAP
-        # doesn't recognize has the same problem.
+        # OpenAP has no performance model to simulate this typecode against
+        # — a narrower, purely OpenAP-list question than
+        # services.aircraft_category.categorize's category boundary (cf.
+        # resolve_typecode's own docstring): always true for petit_avion and
+        # helicoptere, and true for most of jet_affaire too, except the
+        # couple of business-jet families OpenAP's own ~40-typecode list
+        # happens to include. No score rather than a silent, physically
+        # meaningless comparison against a substituted A320 (the previous
+        # behaviour).
         return None
 
     sim_climb = fgen.climb(dt=10)

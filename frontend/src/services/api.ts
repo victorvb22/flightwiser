@@ -1,6 +1,6 @@
 /**
- * Unique point d'appel vers le backend (brief section 7) — aucun composant
- * ne doit appeler fetch()/axios directement, tout passe par ici.
+ * The single point of contact with the backend (brief section 7) — no
+ * component should call fetch()/axios directly, everything goes through here.
  */
 
 export interface TrajectoirePoint {
@@ -75,9 +75,9 @@ export interface FlightResponse {
   directness?: Directness | null;
   kpi_bonus: unknown | null;
   source: SourceVol;
-  /** Métadonnées façon FlightRadar24 — chacune peut être absente selon ce
-   * que la base aéronefs / la géométrie de la trajectoire permettent de
-   * résoudre (brief : "si elles sont dispo"), jamais fabriquée. */
+  /** FlightRadar24-style metadata — each field can be absent depending on
+   * what the aircraft database / the trajectory's geometry actually let us
+   * resolve (brief: "if available"), never fabricated. */
   typecode: string | null;
   immatriculation: string | null;
   origine: string | null;
@@ -98,9 +98,9 @@ export interface HealthResponse {
  * those (only what the diagnostic models themselves need) — typecode is the
  * one exception, resolved from icao24 on the backend same as identifiant. */
 /** Internal category keys, shared with the backend — cf.
- * models/_anomalie_features.categorize. Same three keys as
+ * services/aircraft_category.py's CATEGORIES. Same four keys as
  * Documentation.tsx's CATEGORY_LABELS. */
-export type Categorie = "avion_ligne" | "petit_avion" | "helicoptere";
+export type Categorie = "avion_ligne" | "jet_affaire" | "petit_avion" | "helicoptere";
 
 export interface HistoryFlightEntry {
   identifiant: string;
@@ -126,11 +126,11 @@ export interface AnomalieCategoryParams {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
-/** Vol introuvable (404) — distinct d'une erreur réseau/serveur pour que
- * l'UI puisse afficher un message adapté plutôt qu'une erreur générique. */
+/** Flight not found (404) — distinct from a network/server error so the UI
+ * can show a tailored message instead of a generic one. */
 export class FlightNotFoundError extends Error {}
 
-/** Toute autre erreur (réseau, backend indisponible, statut inattendu). */
+/** Any other error (network, backend unavailable, unexpected status). */
 export class ApiError extends Error {}
 
 export async function getHealth(): Promise<HealthResponse> {

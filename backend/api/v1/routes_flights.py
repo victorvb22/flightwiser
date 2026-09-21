@@ -56,7 +56,8 @@ def get_flight(identifiant: str):
 
 @router.get("/random/search")
 def get_random_flight(statut: str | None = None):
-    """Random flight from the current live ADS-B feed — no identifier needed, handy for a demo.
+    """Random flight drawn from the pool (cf. pipeline.py, the deployed
+    backend can't call OpenSky live) — no identifier needed, handy for a demo.
     `statut` optionally filters to "en_vol" or "atterri"."""
     want_on_ground = {"atterri": True, "en_vol": False}.get(statut) if statut else None
     result = pipeline.get_random_flight(want_on_ground)

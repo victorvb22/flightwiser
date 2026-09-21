@@ -41,8 +41,8 @@ function formatFeatureValue(feature: string, value: number): string {
 const R = 52;
 const CIRC = 2 * Math.PI * R;
 
-/** Jauge circulaire : l'arc rempli suit le score (rang percentile de
- * vraisemblance), la couleur suit le dégradé vert -> rouge partagé. */
+/** Circular gauge: the filled arc follows the score (likelihood percentile
+ * rank), the color follows the shared green -> red gradient. */
 function RingGauge({ score, color }: { score: number; color: string }) {
   // Fills from 0 up to the real score on arrival rather than snapping
   // straight to it — driven every frame, so no CSS transition on the arc
@@ -50,7 +50,7 @@ function RingGauge({ score, color }: { score: number; color: string }) {
   const display = useCountUp(score);
   const filled = CIRC * Math.max(0.02, Math.min(display, 1));
   return (
-    <svg viewBox="0 0 128 128" width={128} height={128} role="img" aria-label={`Score d'anomalie ${Math.round(score * 100)}%`}>
+    <svg viewBox="0 0 128 128" width={128} height={128} role="img" aria-label={`Anomaly score ${Math.round(score * 100)}%`}>
       <circle cx={64} cy={64} r={R} fill="none" stroke="var(--surface-3)" strokeWidth={9} />
       <circle
         cx={64}

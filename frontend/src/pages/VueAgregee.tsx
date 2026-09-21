@@ -23,9 +23,10 @@ const FEATURE_OPTIONS: { key: FeatureKey; label: string; good: 0 | 1 }[] = [
 
 // Same keys/labels as Documentation.tsx's CATEGORY_LABELS — shown here so a
 // surprising score can be explained by which category the flight actually
-// landed in (cf. models/_anomalie_features.categorize), not just guessed at.
+// landed in (cf. services/aircraft_category.categorize), not just guessed at.
 const CATEGORY_LABELS: Record<Categorie, string> = {
   avion_ligne: "Airliner",
+  jet_affaire: "Business jet",
   petit_avion: "Small aircraft",
   helicoptere: "Helicopter",
 };

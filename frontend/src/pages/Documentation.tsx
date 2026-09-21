@@ -42,9 +42,9 @@ const codeStyle: React.CSSProperties = {
 
 // Internal category keys mapped to the English labels shown here. All four
 // come from services/aircraft_category.py's table (typecode -> category) —
-// the anomaly model trains on all four; the trajectory-deviation and
-// route-directness models still use the two-way split (jet_affaire and
-// helicoptere fold into petit_avion for those, cf. categorize_two_way).
+// the anomaly and route-directness models both train on all four;
+// trajectory-deviation doesn't use categories at all (a live per-typecode
+// OpenAP simulation, see its own section below).
 const CATEGORY_LABELS: Record<string, string> = {
   avion_ligne: "Airliner",
   jet_affaire: "Business jet",
@@ -287,9 +287,10 @@ export function Documentation() {
     refreshAnomalieParams();
   }, [refreshAnomalieParams]);
 
-  // Anomaly-model category order — this model alone trains on all four
-  // (cf. CATEGORY_LABELS comment above); the deviation/directness sections
-  // further down use their own, unrelated two-category numbers.
+  // Anomaly-model category order — directness (further down) trains on the
+  // same four categories and reuses this exact order/labels; trajectory-
+  // deviation doesn't use categories at all (cf. CATEGORY_LABELS comment
+  // above).
   const categoryOrder = ["avion_ligne", "jet_affaire", "petit_avion", "helicoptere"];
 
   return (
@@ -355,8 +356,9 @@ export function Documentation() {
           climb/cruise/descent phases) and a business jet's (cruising far faster and higher than typical general aviation, and more directly point-
           to-point than typical training/touring circuits) each sit meaningfully outside the other distributions even for a perfectly ordinary
           flight, so pooling either into Small aircraft risked flagging most of that population as anomalous regardless of the actual flight. Only
-          the trajectory-deviation model doesn't make this split — it excludes the whole non-airliner population outright anyway (no OpenAP
-          performance model exists for any of the three), so there's no distribution to split in the first place.
+          the trajectory-deviation model doesn't make this split — it isn't trained on a per-category distribution at all, just a live OpenAP
+          simulation keyed to the exact typecode (see below): in practice this scores almost every Airliner flight, plus the couple of Business jet
+          typecodes OpenAP happens to model too, and nothing else.
         </p>
         <Table
           head={["Category", "Flights (anomaly model)", "Flights (directness model)"]}
@@ -457,10 +459,11 @@ export function Documentation() {
           Independent of the anomaly score. The real climb/cruise/descent phases (segmented from vertical speed and altitude) are compared against
           an OpenAP-simulated optimal profile for the same aircraft type — same route distance, same typecode's performance model. Each phase gets
           its own deviation percentage (actual vs. optimal vertical speed and phase duration); the overall score is their combination. A typecode
-          OpenAP doesn't recognize — Business jet and Small aircraft both, by definition, helicopters included — gets no score at all rather than a
-          number computed by comparing it against a substituted A320 simulation: OpenAP only models a few dozen mainline/regional airliner types,
-          and a comparison against a performance profile for a different kind of aircraft entirely isn't a deviation measurement, just a misleading
-          number that happens to look like one.
+          OpenAP doesn't recognize gets no score at all rather than a number computed by comparing it against a substituted A320 simulation — this
+          excludes Small aircraft and Helicopter outright (OpenAP models neither) and most of Business jet too: OpenAP's own list covers only about
+          forty typecodes, almost all mainline/regional airliners, plus two business-jet families (Cessna Citation and Gulfstream, and their
+          synonyms) that happen to be on it as well — those specific typecodes do get a real score. A comparison against a performance profile for
+          a different kind of aircraft entirely isn't a deviation measurement, just a misleading number that happens to look like one.
         </p>
       </Section>
 
