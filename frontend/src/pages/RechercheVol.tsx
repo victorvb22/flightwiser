@@ -470,7 +470,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
 export function RechercheVol() {
   const isMobile = useIsMobile();
   const wakingUp = useBackendWakeup();
-  const { refreshHistory, exampleIdentifiant, refreshExample } = useAppData();
+  const { refreshHistory, addToHistory, exampleIdentifiant, refreshExample } = useAppData();
   // Only on the very first visit this session (exampleIdentifiant is cached
   // above the router, cf. AppDataContext.tsx) — a revisit already has one,
   // and every successful search/random draw below refreshes it anyway.
@@ -599,9 +599,12 @@ export function RechercheVol() {
     try {
       const vol = await getFlight(valeur);
       setEtat({ statut: "succes", vol });
-      // Fire-and-forget: lets the Aggregate view's cached history already
-      // include this flight by the time the user gets there, instead of it
-      // only showing up after that page's own next background refresh.
+      // addToHistory shows this flight in the Aggregate view immediately,
+      // client-side, no extra request; refreshHistory's own (slower)
+      // background fetch then reconciles it against the real server-side
+      // row (mainly calcule_le, an exact timestamp addToHistory can only
+      // approximate) once that resolves — see both their own docstrings.
+      addToHistory(vol);
       refreshHistory();
       // Keeps the placeholder's example naming a flight that's still
       // "undiscovered" rather than the one just searched — cheap to do
@@ -641,8 +644,9 @@ export function RechercheVol() {
       // back to normal Search-mode styling, rather than leaving Random
       // flight looking "still armed" for a search that already ran.
       requestAnimationFrame(() => setRandomFilter(null));
-      refreshHistory();
       // Same reasoning as rechercher() above.
+      addToHistory(vol);
+      refreshHistory();
       refreshExample();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
