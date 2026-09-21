@@ -28,6 +28,7 @@ REFERENCE_DIR = BACKEND_DIR.parent / "data" / "reference"
 POOL_PATH = REFERENCE_DIR / "flight_pool.jsonl"
 
 _pool: list[dict[str, Any]] | None = None
+_by_icao24: dict[str, dict[str, Any]] | None = None
 
 
 def _load_pool() -> list[dict[str, Any]]:
@@ -47,6 +48,27 @@ def _get_pool() -> list[dict[str, Any]]:
     if _pool is None:
         _pool = _load_pool()
     return _pool
+
+
+def _get_by_icao24() -> dict[str, dict[str, Any]]:
+    """icao24 -> pool entry, built once alongside the pool itself — one
+    entry per icao24 by construction (scripts/build_flight_pool.py
+    deduplicates on it), so this is a safe 1:1 index, not just a first-match
+    shortcut."""
+    global _by_icao24
+    if _by_icao24 is None:
+        _by_icao24 = {entry["_icao24"]: entry for entry in _get_pool()}
+    return _by_icao24
+
+
+def find_by_icao24(icao24: str) -> dict[str, Any] | None:
+    """The pool entry for this exact icao24, if any — used to recover the
+    callsign a cached flight was originally served under (services/
+    cache.py only stores icao24+date, not the callsign), so the search
+    history can show the same identifier the user actually searched with
+    instead of falling back to the registration (get_search_history,
+    routes_flights.py)."""
+    return _get_by_icao24().get(icao24)
 
 
 def find_by_identifiant(identifiant: str) -> dict[str, Any] | None:

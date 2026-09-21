@@ -42,9 +42,22 @@ def get_search_history():
     for row in rows:
         icao24, _, _date = row["id"].partition("_")
         typecode = get_typecode(icao24)
+        # The pool's own callsign (entry["identifiant"]) first, not the
+        # registration -- flights_cache only stores icao24+date (cf.
+        # services/cache.py), not which string the flight was actually
+        # searched or drawn with, so the registration was standing in for
+        # it. That's the same identifier every other search result/random
+        # draw on this page already shows (pipeline.py always uses the
+        # pool entry's own identifiant), so preferring it here too means a
+        # flight searched as "AMX800" shows up as "AMX800" in its own
+        # history, not silently renamed to its registration. Falls back to
+        # registration, then the bare icao24, only if this icao24 isn't (or
+        # no longer is) in the pool at all.
+        pool_entry = flight_pool.find_by_icao24(icao24)
+        identifiant = (pool_entry["identifiant"] if pool_entry else None) or get_registration(icao24) or icao24
         history.append(
             {
-                "identifiant": get_registration(icao24) or icao24,
+                "identifiant": identifiant,
                 "typecode": typecode,
                 # Same category the anomaly model actually scored this flight
                 # against (services.aircraft_category.categorize) — not a

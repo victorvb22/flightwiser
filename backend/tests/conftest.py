@@ -48,12 +48,14 @@ def test_pool(monkeypatch):
     out of data/reference/flight_pool.jsonl, plus one synthetic
     unidentified aircraft) instead of the real pool, so API tests stay
     correct and fast regardless of how many flights the user has collected
-    since. Resets the module's load-once cache before and after (monkeypatch
-    auto-reverts the attribute itself, but the cached list needs its own
-    reset since nothing else would reload it)."""
+    since. Resets the module's load-once caches before and after
+    (monkeypatch auto-reverts the attributes themselves, but the cached
+    list/index need their own reset since nothing else would reload them)."""
     import services.flight_pool as flight_pool
 
     monkeypatch.setattr(flight_pool, "POOL_PATH", FIXTURES_DIR / "flight_pool_sample.jsonl")
     monkeypatch.setattr(flight_pool, "_pool", None)
+    monkeypatch.setattr(flight_pool, "_by_icao24", None)
     yield
     flight_pool._pool = None
+    flight_pool._by_icao24 = None

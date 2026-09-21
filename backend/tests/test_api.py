@@ -84,6 +84,35 @@ def test_example_identifiant_is_one_of_the_pool_flights(test_pool):
     assert body["identifiant"] in {"RYR2PY", "LTA660", "TEST999"}
 
 
+def test_history_shows_the_identifier_actually_searched_with(test_pool, monkeypatch):
+    # Regression test for a real bug report: a flight searched as "RYR2PY"
+    # (icao24 4ca56b, registration EI-DWF -- verified by hand against the
+    # real bundled aircraft database) showed up in the history under its
+    # registration instead, because flights_cache only stores icao24+date,
+    # never which string the flight was actually searched/drawn with.
+    # get_search_history() now recovers that from the pool entry itself
+    # (services/flight_pool.find_by_icao24), which is what every other
+    # search result/random draw on the page already shows -- so this
+    # monkeypatches only the cache row (block_network already makes the
+    # real Supabase call impossible), not the pool, to isolate that lookup.
+    fake_row = {
+        "id": "4ca56b_2026-01-01",
+        "statut": "atterri",
+        "trajectoire": [],
+        "ecart_trajectoire": None,
+        "anomalie": None,
+        "directness": None,
+        "calcule_le": "2026-01-01T00:00:00+00:00",
+    }
+    monkeypatch.setattr("services.cache.get_all_cached_flights", lambda: [fake_row])
+
+    response = client.get("/api/v1/flights/history")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["identifiant"] == "RYR2PY"
+
+
 def test_search_history_endpoint_returns_a_list():
     # block_network makes cache.get_all_cached_flights() a silent empty
     # list -- this only checks the route wires that up correctly, not real
