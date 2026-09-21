@@ -1,6 +1,6 @@
 # Flightwiser
 
-ML search-and-diagnostic tool for individual flights, built on real ADS-B data (OpenSky Network): real trajectory, trajectory anomaly score, deviation vs. a simulated optimal profile (OpenAP), and route directness (great-circle distance vs. distance actually flown). v1: no fuel/mission-based anomaly categorization, no bonus KPI.
+ML search-and-diagnostic tool for individual flights, built on real ADS-B data (OpenSky Network): real trajectory, trajectory anomaly score, deviation vs. a simulated optimal profile (OpenAP), and route directness (great-circle distance vs. distance actually flown). Fuel/mission-based anomaly categorization and a bonus KPI were considered early on and aren't part of the product's scope.
 
 ## Structure
 
