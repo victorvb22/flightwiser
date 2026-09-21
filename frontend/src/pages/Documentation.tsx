@@ -60,7 +60,19 @@ const CARD_PADDING_MOBILE = 12;
 
 function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
   const isMobile = useIsMobile();
-  const cellPadding = isMobile ? "6px 6px" : "6px 10px";
+  const cellPaddingRest = isMobile ? "6px" : "10px";
+  // The first column's own left padding, separate from every other cell's:
+  // on desktop the table sits directly inside the card at its own 24px
+  // padding, same as a paragraph (pStyle) — a plain shared cellPadding would
+  // add its horizontal padding on top of that, pushing the first column's
+  // text 10px further right than a paragraph's. On mobile the table instead
+  // bleeds out of the card by CARD_PADDING_MOBILE (the comment on that
+  // constant), landing it flush with the card's own edge — so it needs that
+  // same amount back as left padding to land text at the paragraph's inset,
+  // not the smaller 6px every other cell uses.
+  const firstCellPaddingLeft = isMobile ? CARD_PADDING_MOBILE : 0;
+  const firstCellPadding = `6px ${cellPaddingRest} 6px ${firstCellPaddingLeft}px`;
+  const cellPadding = `6px ${cellPaddingRest}`;
   return (
     <div style={isMobile ? { margin: `0 -${CARD_PADDING_MOBILE}px`, overflowX: "auto" } : undefined}>
       {/* Phone-width only: equal-width columns and justified text spread the
@@ -78,8 +90,8 @@ function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) 
       >
         <thead>
           <tr style={{ textAlign: "left", color: "var(--text-faint)", fontSize: isMobile ? 10.5 : 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {head.map((h) => (
-              <th key={h} style={{ padding: cellPadding, borderBottom: "1px solid var(--border-strong)" }}>
+            {head.map((h, j) => (
+              <th key={h} style={{ padding: j === 0 ? firstCellPadding : cellPadding, borderBottom: "1px solid var(--border-strong)" }}>
                 {h}
               </th>
             ))}
@@ -89,7 +101,7 @@ function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) 
           {rows.map((row, i) => (
             <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
               {row.map((cell, j) => (
-                <td key={j} style={{ padding: cellPadding }}>
+                <td key={j} style={{ padding: j === 0 ? firstCellPadding : cellPadding }}>
                   {cell}
                 </td>
               ))}
