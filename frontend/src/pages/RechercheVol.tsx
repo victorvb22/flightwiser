@@ -783,8 +783,15 @@ export function RechercheVol() {
                 extra line of its own: flex-grow claims whatever the
                 filter label + button don't need, so the row's height never
                 changes — a long message is clipped with an ellipsis rather
-                than wrapping, which would grow it. */}
-            {isMobile && etat.statut === "erreur" && !flashError && (
+                than wrapping, which would grow it. Not gated on
+                !flashError (unlike the desktop span above) — that gate
+                exists to let the title row's own red pulse-dot finish its
+                550ms flash before the text sits down next to it; this
+                message lives nowhere near that dot, so gating it the same
+                way just withheld it for 550ms and then popped it in,
+                reading as a blink rather than a clean, immediate
+                appearance. */}
+            {isMobile && etat.statut === "erreur" && (
               <span
                 role="alert"
                 style={{

@@ -4,14 +4,27 @@ import { Clock } from "lucide-react";
 // out_of_training_scope warning -- an informational heads-up, not an error,
 // so it borrows that established "amber, not red" vocabulary rather than
 // introducing a new one for a single banner.
+//
+// max-height and opacity previously ran on different durations (500ms vs
+// 350ms) -- disappearing, the text finished fading out 150ms before the
+// now-invisible box was done collapsing, and appearing, the box was still
+// growing for 150ms after the text had already reached full opacity: two
+// motions finishing at different times rather than one coordinated reveal.
+// A single shared duration/easing (cf. RechercheVol.tsx's own
+// EXPAND_TRANSITION, same reasoning) makes the box and its content move
+// together.
+const WAKEUP_EASE = "420ms cubic-bezier(0.22, 1, 0.36, 1)";
+
 export function WakeupBanner({ visible }: { visible: boolean }) {
   return (
     // Collapses to nothing (not just hidden) when not visible, so it never
     // leaves a gap above the search form / history table -- same
     // maxHeight+overflow:hidden technique used for the expandable cards
     // elsewhere on these pages, just inline here since this is the only
-    // place that needs it.
-    <div style={{ maxHeight: visible ? 44 : 0, overflow: "hidden", transition: "max-height 500ms cubic-bezier(0.22, 1, 0.36, 1)" }}>
+    // place that needs it. 56px, not the message's own ~34px natural
+    // height, leaves headroom for the text to wrap to two lines on a
+    // narrow phone without max-height itself clipping the second line.
+    <div style={{ maxHeight: visible ? 56 : 0, overflow: "hidden", transition: `max-height ${WAKEUP_EASE}` }}>
       <p
         role="status"
         style={{
@@ -26,7 +39,7 @@ export function WakeupBanner({ visible }: { visible: boolean }) {
           padding: "5px 9px",
           margin: "10px 0 0",
           opacity: visible ? 1 : 0,
-          transition: "opacity 350ms ease",
+          transition: `opacity ${WAKEUP_EASE}`,
         }}
       >
         <Clock size={13} />

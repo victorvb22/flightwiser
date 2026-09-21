@@ -103,18 +103,48 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [anomalieParams, setAnomalieParams] = useState<AnomalieParamsState>({ params: null, loading: false, error: null });
   const [exampleIdentifiant, setExampleIdentifiant] = useState<string | null>(readStoredExample);
 
+  // Guards against the same class of race already found and fixed for
+  // exampleIdentifiant below: VueAgregee's own mount effect calls
+  // refreshHistory() every visit, StrictMode double-invokes that in dev,
+  // and a search on the Search page calls it too (right after the flight
+  // that search just found was written to flights_cache) — nothing
+  // enforced that the LAST of several overlapping calls to actually
+  // resolve was also the last one issued, so a slower, earlier-issued
+  // fetch (e.g. one kicked off before that write happened) could still
+  // land after a newer one and silently show the just-searched flight as
+  // missing. Only the response to the most recently issued call is ever
+  // allowed to apply.
+  const historyRequestId = useRef(0);
   const refreshHistory = useCallback(() => {
+    const requestId = ++historyRequestId.current;
     setHistory((s) => ({ ...s, loading: s.entries === null, error: null }));
     getSearchHistory()
-      .then((entries) => setHistory({ entries, loading: false, error: null }))
-      .catch((err) => setHistory((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" })));
+      .then((entries) => {
+        if (requestId === historyRequestId.current) setHistory({ entries, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (requestId === historyRequestId.current) {
+          setHistory((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" }));
+        }
+      });
   }, []);
 
+  // Same reasoning as refreshHistory above — Documentation.tsx's own mount
+  // effect has the identical shape (calls this every visit, StrictMode
+  // double-invokes it too).
+  const anomalieParamsRequestId = useRef(0);
   const refreshAnomalieParams = useCallback(() => {
+    const requestId = ++anomalieParamsRequestId.current;
     setAnomalieParams((s) => ({ ...s, loading: s.params === null, error: null }));
     getAnomalieModelParams()
-      .then((params) => setAnomalieParams({ params, loading: false, error: null }))
-      .catch((err) => setAnomalieParams((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" })));
+      .then((params) => {
+        if (requestId === anomalieParamsRequestId.current) setAnomalieParams({ params, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (requestId === anomalieParamsRequestId.current) {
+          setAnomalieParams((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" }));
+        }
+      });
   }, []);
 
   // Guards against a real race, not a hypothetical one: RechercheVol.tsx's
