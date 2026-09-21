@@ -1,41 +1,39 @@
-"""Entraînement offline du modèle d'anomalie (brief section 11) : ajuste une
-gaussienne diagonale par catégorie d'appareil (une par feature résumée de
-vol, cf. models/_anomalie_features.py) sur les vols atterris de l'ensemble
-du dataset disponible, et persiste les paramètres dans
-models/artifacts/anomalie_params.json pour le service (models/anomalie.py).
+"""Offline training of the anomaly model (brief section 11): fits a diagonal
+Gaussian per aircraft category (one per summary flight feature, cf.
+models/_anomalie_features.py) on landed flights from the whole available
+dataset, and persists the parameters to
+models/artifacts/anomalie_params.json for the service (models/anomalie.py).
 
-Deux sources concaténées (brief : "utiliser le dataset entier") plutôt
-qu'une seule :
-  - data/processed/flights_clean.parquet (3132 vols, 27/06/2022)
-  - data/processed/flights_historical_features.parquet, produit par
-    scripts/extract_historical_for_training.py (bbox Europe) pour la même
-    journée.
+Two sources concatenated (brief: "use the entire dataset") rather than one:
+  - data/processed/flights_clean.parquet (3132 flights, 2022-06-27)
+  - data/processed/flights_historical_features.parquet, produced by
+    scripts/extract_historical_for_training.py (Europe bbox) for the same
+    day.
 
-Les deux sources se recouvrent partiellement (même jour) — dédoublonnées via
-scripts._training_data.load_deduplicated_landed_flights avant fusion (sinon
-un vol présent dans les deux pèserait deux fois dans μ/σ), qui garde la
-version flights_historical_features.parquet en cas de doublon.
+The two sources partially overlap (same day) — deduplicated via
+scripts._training_data.load_deduplicated_landed_flights before merging
+(otherwise a flight present in both would weigh twice in μ/σ), which keeps
+the flights_historical_features.parquet version on a duplicate.
 
-Catégorisation avion_ligne / petit_avion / helicoptere (cf.
-models/_anomalie_features.categorize) : une gaussienne unique sur tout le
-dataset pénaliserait systématiquement les groupes minoritaires, leurs
-distributions de vitesse/altitude/taux de montée étant trop différentes —
-hélicoptère isolé de petit_avion en particulier, son profil (vol
-stationnaire, pas de phases montée/croisière/descente classiques) étant hors
-de la distribution d'un avion à voilure fixe même pour un vol normal.
+Categorization into avion_ligne / jet_affaire / petit_avion / helicoptere
+(cf. models/_anomalie_features.categorize): a single Gaussian over the whole
+dataset would systematically penalize minority groups, their speed/altitude/
+climb-rate distributions being too different — helicopter isolated from
+petit_avion in particular, its profile (hover flight, no classic climb/
+cruise/descent phases) sitting outside a fixed-wing aircraft's distribution
+even for a normal flight.
 
-Pas de vraies étiquettes d'anomalie dans ce dataset (brief section 11) : le
-seuil ε est choisi, par catégorie, comme le 1er percentile de la
-log-vraisemblance sur un split de validation, puis les vols les plus bas
-classés sont affichés pour une inspection manuelle de cohérence — une
-heuristique documentée, pas une validation supervisée précision/rappel.
-Le score exposé côté service est un rang percentile (0-1) recalculé par
-rapport à cette même distribution d'entraînement, ce qui reste comparable
-d'une catégorie à l'autre malgré des log-vraisemblances brutes non
-comparables (échelles différentes par catégorie) — ε ne sert donc, comme
-avant, qu'à l'inspection manuelle ci-dessous, pas au score servi.
+No real anomaly labels in this dataset (brief section 11): the ε threshold
+is chosen, per category, as the 1st percentile of log-likelihood on a
+validation split, then the lowest-scoring flights are printed for a manual
+sanity check — a documented heuristic, not a supervised precision/recall
+validation. The score exposed by the service is a percentile rank (0-1)
+recomputed against this same training distribution, which stays comparable
+from one category to another despite raw log-likelihoods that aren't
+(different scales per category) — ε is therefore only used, as before, for
+the manual inspection below, not for the served score.
 
-Usage : python scripts/train_anomalie.py
+Usage: python scripts/train_anomalie.py
 """
 
 import json
@@ -47,17 +45,17 @@ import numpy as np
 import pandas as pd
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-# Nécessaire pour "python scripts/train_anomalie.py" (sys.path[0] est alors
-# scripts/, pas backend/) ; sans effet si déjà lancé via -m.
+# Needed for "python scripts/train_anomalie.py" (sys.path[0] is then
+# scripts/, not backend/); a no-op if already run via -m.
 sys.path.insert(0, str(BACKEND_DIR))
 
 from models._anomalie_features import CATEGORIES, FEATURES, LOG1P_FEATURES, categorize, extract_features  # noqa: E402
 from scripts._training_data import load_deduplicated_landed_flights  # noqa: E402
 
 DATA_DIR = BACKEND_DIR.parent / "data"
-# flights_historical_features.parquet vit hors du dépôt (cf. son script de
-# génération, scripts/extract_historical_for_training.py) — même variable
-# d'environnement que le cache raw_states/ pour rester cohérent.
+# flights_historical_features.parquet lives outside the repo (cf. the script
+# that generates it, scripts/extract_historical_for_training.py) — same
+# environment variable as the raw_states/ cache, for consistency.
 EXTERNAL_DATA_DIR = Path(os.environ.get("IMPORT_DATA_DIR", r"D:\ML_data\flightwiser"))
 INPUT_PARQUETS = [
     DATA_DIR / "processed" / "flights_clean.parquet",
@@ -66,47 +64,47 @@ INPUT_PARQUETS = [
 ARTIFACT_PATH = BACKEND_DIR / "models" / "artifacts" / "anomalie_params.json"
 
 VALIDATION_FRACTION = 0.10
-EPSILON_PERCENTILE = 1.0  # 1er percentile de la log-vraisemblance de validation
+EPSILON_PERCENTILE = 1.0  # 1st percentile of validation log-likelihood
 N_LOWEST_TO_INSPECT = 10
 RANDOM_SEED = 0
-N_PERCENTILE_BREAKPOINTS = 101  # percentiles 0..100 inclus
-# En dessous de ce nombre de vols, une gaussienne (et a fortiori un split
-# train/validation) n'est plus fiable — mieux vaut le signaler bruyamment
-# que de persister un artefact silencieusement sous-entraîné.
+N_PERCENTILE_BREAKPOINTS = 101  # percentiles 0..100 inclusive
+# Below this many flights, a Gaussian (let alone a train/validation split)
+# is no longer reliable — better to flag it loudly than to silently persist
+# an under-trained artifact.
 MIN_FLIGHTS_PER_CATEGORY = 30
 
 
 def gaussian_log_pdf(x: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    """Log-densité d'une gaussienne diagonale, sommée sur les features (axis=1)."""
+    """Log-density of a diagonal Gaussian, summed over features (axis=1)."""
     var = std**2
     return np.sum(-0.5 * np.log(2 * np.pi * var) - (x - mean) ** 2 / (2 * var), axis=1)
 
 
 def fit_category(name: str, feat_df: pd.DataFrame, rng: np.random.Generator) -> dict:
-    print(f"\n=== Catégorie : {name} ({len(feat_df)} vols) ===")
+    print(f"\n=== Category: {name} ({len(feat_df)} flights) ===")
     if len(feat_df) < MIN_FLIGHTS_PER_CATEGORY:
-        print(f"ATTENTION : {len(feat_df)} < {MIN_FLIGHTS_PER_CATEGORY} vols, gaussienne peu fiable pour cette catégorie.")
+        print(f"WARNING: {len(feat_df)} < {MIN_FLIGHTS_PER_CATEGORY} flights, unreliable Gaussian for this category.")
 
-    print("Skew par feature (après transformation) :")
+    print("Skew per feature (after transformation):")
     print(feat_df[FEATURES].skew())
 
     shuffled_idx = rng.permutation(len(feat_df))
     n_val = max(1, int(len(feat_df) * VALIDATION_FRACTION))
     val_idx, train_idx = shuffled_idx[:n_val], shuffled_idx[n_val:]
     train_df, val_df = feat_df.iloc[train_idx], feat_df.iloc[val_idx]
-    print(f"Train : {len(train_df)}  Validation : {len(val_df)}")
+    print(f"Train: {len(train_df)}  Validation: {len(val_df)}")
 
     mean = train_df[FEATURES].mean()
-    std = train_df[FEATURES].std().replace(0, 1e-6)  # évite une division par 0 si une feature est constante
+    std = train_df[FEATURES].std().replace(0, 1e-6)  # avoids a division by 0 if a feature is constant
 
     train_loglik = gaussian_log_pdf(train_df[FEATURES].to_numpy(), mean.to_numpy(), std.to_numpy())
     val_loglik = gaussian_log_pdf(val_df[FEATURES].to_numpy(), mean.to_numpy(), std.to_numpy())
 
     epsilon = float(np.percentile(val_loglik, EPSILON_PERCENTILE))
-    print(f"Seuil ε (1er percentile, validation) : {epsilon:.2f}")
+    print(f"ε threshold (1st percentile, validation): {epsilon:.2f}")
 
     n_lowest = min(N_LOWEST_TO_INSPECT, len(val_df))
-    print(f"{n_lowest} vols de validation les plus bas classés (à inspecter manuellement) :")
+    print(f"{n_lowest} lowest-scoring validation flights (for manual inspection):")
     lowest = val_df.assign(log_vraisemblance=val_loglik).nsmallest(n_lowest, "log_vraisemblance")
     print(lowest[["icao24", "callsign", "log_vraisemblance", *FEATURES]].to_string(index=False))
 
@@ -128,12 +126,12 @@ def main():
 
     records = []
     n_insufficient = 0
-    # itertuples(), pas iterrows() : pandas/pyarrow (string dtype "Arrow-backed"
-    # par défaut ici) plante en essayant d'homogénéiser toutes les colonnes en
-    # un seul tableau pour iterrows() dès que waypoints (chaînes JSON de
-    # plusieurs Ko) est mêlé à des colonnes de dtypes différents (callsign
-    # object, still_airborne bool) — itertuples() n'a pas besoin de ce
-    # tableau unique, donc ne déclenche pas la conversion qui plante.
+    # itertuples(), not iterrows(): pandas/pyarrow (Arrow-backed string dtype
+    # by default here) crashes trying to homogenize every column into a
+    # single array for iterrows() as soon as waypoints (multi-KB JSON
+    # strings) is mixed with columns of different dtypes (callsign object,
+    # still_airborne bool) — itertuples() doesn't need that single array, so
+    # it doesn't trigger the conversion that crashes.
     for row in landed.itertuples(index=False):
         waypoints = json.loads(row.waypoints)
         features = extract_features(waypoints)
@@ -145,10 +143,10 @@ def main():
         features["categorie"] = categorize(row.typecode)
         records.append(features)
 
-    print(f"Vols avec features exploitables : {len(records)} ({n_insufficient} exclus, données insuffisantes)")
+    print(f"Flights with usable features: {len(records)} ({n_insufficient} excluded, insufficient data)")
 
     feat_df = pd.DataFrame(records)
-    print("\nRépartition par catégorie :")
+    print("\nBreakdown by category:")
     print(feat_df["categorie"].value_counts())
 
     rng = np.random.default_rng(RANDOM_SEED)
@@ -161,7 +159,7 @@ def main():
     }
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT_PATH.write_text(json.dumps(artifact, indent=2))
-    print(f"\nParamètres écrits dans {ARTIFACT_PATH}")
+    print(f"\nParameters written to {ARTIFACT_PATH}")
 
 
 if __name__ == "__main__":

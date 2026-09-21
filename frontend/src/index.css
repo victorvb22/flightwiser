@@ -1,9 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap");
 
 :root {
-  /* Thème sombre assumé comme identité du produit (pas un mode parmi
-     d'autres) — fond quasi-noir, vert/rouge comme langage sémantique
-     central (normal/anomalie), cohérent sur toute l'app. */
+  /* Dark theme embraced as the product's identity (not one mode among
+     others) — near-black background, green/red as the central semantic
+     language (normal/anomaly), consistent across the whole app. */
   --bg: #050607;
   --surface: #0d0f11;
   --surface-2: #14171a;
@@ -15,10 +15,10 @@
   --text-muted: #9aa1a8;
   --text-faint: #5c6369;
 
-  /* Vert = normal/conforme, rouge = anomalie/écart marqué — les deux pôles
-     sémantiques centraux de l'app, pas de simples "couleurs de statut"
-     parmi d'autres. L'ambre sert d'étape intermédiaire dans le dégradé
-     continu (voir lib/severity.ts), jamais utilisé seul. */
+  /* Green = normal/compliant, red = flagged anomaly/deviation — the app's
+     two central semantic poles, not just another pair of "status colors."
+     Amber is only an intermediate step in the continuous gradient (see
+     lib/severity.ts), never used on its own. */
   --green: #2fe6a4;
   --green-dim: #123329;
   --amber: #f5b942;

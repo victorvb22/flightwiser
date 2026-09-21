@@ -32,12 +32,11 @@ function useGrowth(key: string): number {
 }
 
 /**
- * Histogramme à 10 bins (0-0.1, ..., 0.9-1.0). Chaque barre est colorée sur
- * le même dégradé vert->rouge que le reste de l'app, selon la valeur du bin
- * qu'elle représente — ce n'est pas un double-encodage : c'est la même
- * variable déjà portée par l'axe X, juste rendue plus lisible d'un coup
- * d'œil. `good=1` : bin haut = vert (score_anomalie) ; `good=0` : bin bas =
- * vert (score_ecart).
+ * 10-bin histogram (0-0.1, ..., 0.9-1.0). Each bar is colored on the same
+ * green->red gradient as the rest of the app, by the value of the bin it
+ * represents — this isn't double-encoding: it's the same variable already
+ * carried by the X axis, just made more readable at a glance. `good=1`:
+ * high bin = green (score_anomalie); `good=0`: low bin = green (score_ecart).
  *
  * `highlightBin`, when set, dims every bar except that one index (the bin a
  * currently-selected flight's own score falls into) — undefined/null means

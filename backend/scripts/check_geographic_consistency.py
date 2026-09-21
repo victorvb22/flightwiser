@@ -4,10 +4,11 @@ flight drawn at random anywhere in the world — the app's random draw is no
 longer a geographic-proximity search, so a non-Europe flight is a real case,
 not a hypothetical one.
 
-For avion_ligne and petit_avion (not helicoptere, which has its own
-unconditional "out of the training scope" flag, cf. models/anomalie.py —
-unrelated to this check's result): extracts a modest sample of non-Europe
-candidate flights on the same day (2022-06-27, the same source as training),
+For avion_ligne, jet_affaire, and petit_avion (not helicoptere, which has
+its own unconditional "out of the training scope" flag, cf.
+models/anomalie.py — unrelated to this check's result): extracts a modest
+sample of non-Europe candidate flights on the same day (2022-06-27, the
+same source as training),
 computes their 7 summary features (models/_anomalie_features), and compares
 mean/std per feature to those of the trained Europe model
 (models/artifacts/anomalie_params.json).

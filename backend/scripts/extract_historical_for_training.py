@@ -42,8 +42,8 @@ import truststore
 truststore.inject_into_ssl()
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-# Nécessaire pour "python scripts/extract_historical_for_training.py"
-# (sys.path[0] est alors scripts/, pas backend/) ; sans effet si déjà lancé
+# Needed for "python scripts/extract_historical_for_training.py"
+# (sys.path[0] is then scripts/, not backend/); a no-op if already run
 # via -m.
 sys.path.insert(0, str(BACKEND_DIR))
 
@@ -57,39 +57,37 @@ from services.opensky_historical import (  # noqa: E402
     segment_flights,
 )
 
-# Écrit hors du dépôt (même volume que le cache raw_states/) plutôt que dans
-# data/processed/ : ce fichier dérivé pèse plusieurs centaines de Mo, et le
-# disque du dépôt s'est déjà retrouvé à court d'espace en pratique lors d'un
-# premier essai.
+# Written outside the repo (same volume as the raw_states/ cache) rather
+# than into data/processed/: this derived file weighs several hundred MB,
+# and the repo's disk already ran short of space in practice on a first try.
 DATA_DIR = Path(os.environ.get("IMPORT_DATA_DIR", r"D:\ML_data\flightwiser"))
 OUTPUT_PARQUET = DATA_DIR / "processed" / "flights_historical_features.parquet"
 
-# Écrit par lots (pyarrow.parquet.ParquetWriter) plutôt qu'un seul
-# pd.DataFrame(rows) final : à l'échelle Europe, la colonne "waypoints" (JSON
-# par vol) pèse à elle seule plusieurs Go de texte une fois tous les vols
-# accumulés — la convertir en une seule fois en tableau Arrow demande environ
-# le double de cette taille en mémoire de crête (les chaînes Python déjà en
-# mémoire + le nouveau buffer Arrow contigu), ce qui a échoué avec un
-# ArrowMemoryError même une fois points_by_icao libéré. Écrire par lots de
-# WRITE_CHUNK_SIZE borne cette crête à la taille d'un lot, indépendamment du
-# nombre total de vols.
+# Written in batches (pyarrow.parquet.ParquetWriter) rather than one final
+# pd.DataFrame(rows): at Europe scale, the "waypoints" column (JSON per
+# flight) alone weighs several GB of text once every flight has accumulated
+# — converting it to an Arrow table in one shot needs roughly double that
+# size in peak memory (the Python strings already in memory + the new
+# contiguous Arrow buffer), which failed with an ArrowMemoryError even after
+# points_by_icao was freed. Writing in batches of WRITE_CHUNK_SIZE bounds
+# that peak to a single batch's size, independent of the total flight count.
 WRITE_CHUNK_SIZE = 2000
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", required=True, help="Journée déjà en cache dans raw_states/, ex. 2022-06-27")
+    parser.add_argument("--date", required=True, help="Day already cached in raw_states/, e.g. 2022-06-27")
     args = parser.parse_args()
     date = args.date
 
-    print(f"Passe 1 — repérage des candidats (bbox Europe) pour {date} ...")
+    print(f"Pass 1 — spotting candidates (Europe bbox) for {date} ...")
     candidates = scan_candidates(date, EUROPE_BBOX)
-    print(f"{len(candidates)} icao24 candidats.")
+    print(f"{len(candidates)} candidate icao24s.")
 
-    print("\nPasse 2 — extraction complète des candidats ...")
+    print("\nPass 2 — full extraction of candidates ...")
     points_by_icao = extract_candidate_points(date, candidates)
 
-    print("\nReconstruction et écriture par lots des trajectoires ...")
+    print("\nReconstructing and writing trajectories in batches ...")
     OUTPUT_PARQUET.parent.mkdir(parents=True, exist_ok=True)
     n_rows = 0
     n_landed = 0
@@ -106,9 +104,9 @@ def main():
         buffer.clear()
         return writer
 
-    # Vidé au fur et à mesure (.pop plutôt que .items()) : à l'échelle
-    # Europe, points_by_icao pèse plusieurs Go, inutile de le garder entier
-    # une fois chaque icao24 traité.
+    # Drained as it's processed (.pop rather than .items()): at Europe
+    # scale, points_by_icao weighs several GB — no reason to keep it whole
+    # once each icao24 has been handled.
     for icao24 in list(points_by_icao.keys()):
         points = points_by_icao.pop(icao24)
         for segment in segment_flights(points):
@@ -141,9 +139,9 @@ def main():
     if writer is not None:
         writer.close()
 
-    print(f"{n_rows} vols reconstruits ({n_no_transition} sans transition air/sol, {n_too_short} trop courts).")
-    print(f"Dont {n_landed} atterris (utilisables pour l'entraînement du modèle d'anomalie).")
-    print(f"\nÉcrit {OUTPUT_PARQUET}")
+    print(f"{n_rows} flights reconstructed ({n_no_transition} without an air/ground transition, {n_too_short} too short).")
+    print(f"Of which {n_landed} landed (usable for training the anomaly model).")
+    print(f"\nWrote {OUTPUT_PARQUET}")
 
 
 if __name__ == "__main__":

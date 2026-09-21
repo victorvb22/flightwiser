@@ -1,15 +1,14 @@
-"""Régénère les snapshots bundlés avec le déploiement
+"""Regenerates the snapshots bundled with the deployment
 (data/reference/aircraft_database_trimmed.parquet, airports_trimmed.parquet)
-— à relancer quand la source amont (OpenSky, OurAirports) change et qu'on
-veut rafraîchir la base embarquée. Lit les CSV bruts en cache local
-(les télécharge si absents, via la même fonction que services/
-aircraft_database.download_if_missing), applique exactement le même
-traitement que load_aircraft_database()/load_airports() (colonnes utiles
-uniquement, filtrage héliports/fermés pour les aéroports), écrit le
-résultat déjà nettoyé en parquet — services/*.py le lit tel quel, sans
-retraitement, à l'exécution.
+— rerun when the upstream source (OpenSky, OurAirports) changes and the
+bundled database needs refreshing. Reads the raw CSVs from the local cache
+(downloading them if absent, via the same function as services/
+aircraft_database.download_if_missing), applies exactly the same processing
+as load_aircraft_database()/load_airports() (useful columns only, heliport/
+closed filtering for airports), writes the already-cleaned result as
+parquet — services/*.py reads it as-is at runtime, with no reprocessing.
 
-Usage : python scripts/generate_reference_snapshots.py
+Usage: python scripts/generate_reference_snapshots.py
 """
 
 import sys
@@ -39,7 +38,7 @@ def generate_aircraft_snapshot() -> None:
     aircraft = aircraft[aircraft["icao24"].fillna("") != ""]
     aircraft = aircraft.drop_duplicates(subset=["icao24"])
     aircraft.to_parquet(AIRCRAFT_BUNDLED_PATH, index=False)
-    print(f"{AIRCRAFT_BUNDLED_PATH} : {len(aircraft)} lignes")
+    print(f"{AIRCRAFT_BUNDLED_PATH}: {len(aircraft)} rows")
 
 
 def generate_airports_snapshot() -> None:
@@ -52,7 +51,7 @@ def generate_airports_snapshot() -> None:
     airports["icao"] = airports["icao_code"].fillna(airports["ident"])
     airports = airports.dropna(subset=["latitude_deg", "longitude_deg", "icao"]).reset_index(drop=True)
     airports.to_parquet(AIRPORTS_BUNDLED_PATH, index=False)
-    print(f"{AIRPORTS_BUNDLED_PATH} : {len(airports)} lignes")
+    print(f"{AIRPORTS_BUNDLED_PATH}: {len(airports)} rows")
 
 
 if __name__ == "__main__":

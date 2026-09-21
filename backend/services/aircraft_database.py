@@ -82,7 +82,7 @@ def resolve_icao24_by_registration(registration: str) -> str | None:
 
 
 def get_typecode(icao24: str) -> str | None:
-    """Typecode connu pour cet icao24, ou None si absent de la base."""
+    """Known typecode for this icao24, or None if absent from the database."""
     db = _get_aircraft_db()
     matches = db[db["icao24"] == icao24.strip().lower()]
     if matches.empty or pd.isna(matches.iloc[0]["typecode"]) or matches.iloc[0]["typecode"] == "":
@@ -91,9 +91,9 @@ def get_typecode(icao24: str) -> str | None:
 
 
 def get_registration(icao24: str) -> str | None:
-    """Immatriculation connue pour cet icao24, ou None si absente de la base
-    (miroir de get_typecode — utilisé pour afficher un identifiant lisible
-    plutôt que l'icao24 brut, ex. Vue agrégée par date)."""
+    """Known registration for this icao24, or None if absent from the
+    database (mirrors get_typecode — used to show a readable identifier
+    instead of the raw icao24, e.g. in the Aggregate view's search history)."""
     db = _get_aircraft_db()
     matches = db[db["icao24"] == icao24.strip().lower()]
     if matches.empty or pd.isna(matches.iloc[0]["registration"]) or matches.iloc[0]["registration"] == "":
