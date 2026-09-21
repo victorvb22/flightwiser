@@ -1,5 +1,5 @@
 import { PlaneLanding, PlaneTakeoff, Gauge as GaugeIcon } from "lucide-react";
-import type { EcartTrajectoire } from "../../services/api";
+import type { Categorie, EcartTrajectoire } from "../../services/api";
 import { severityColor, severityLabel } from "../../lib/severity";
 import { useCountUp } from "../../lib/useCountUp";
 
@@ -53,7 +53,20 @@ function Meter({ label, ecart, detail }: { label: string; ecart: number | null; 
   );
 }
 
-export function JaugeEcart({ ecart, enVol = false }: { ecart: EcartTrajectoire | null; enVol?: boolean }) {
+export function JaugeEcart({
+  ecart,
+  enVol = false,
+  categorie = null,
+}: {
+  ecart: EcartTrajectoire | null;
+  enVol?: boolean;
+  /** Drives the succinct reason shown when landed and unavailable — cf.
+   * pipeline.py: null itself (unidentified aircraft), "helicoptere" (no
+   * rotary-wing performance model exists at all), or a resolved fixed-wing
+   * category whose specific typecode OpenAP just doesn't have a
+   * performance sheet for (the common real case, e.g. A330-800/A337). */
+  categorie?: Categorie | null;
+}) {
   // Called unconditionally (rules of hooks) — target is 0 while there's
   // nothing to show yet, so it's a no-op until a real score arrives.
   const globalPct = useCountUp(ecart !== null ? Math.min(ecart.score_global, 1) * 100 : 0);
@@ -64,10 +77,19 @@ export function JaugeEcart({ ecart, enVol = false }: { ecart: EcartTrajectoire |
     // helicopters) gets no simulated performance model to compare against,
     // same as an in-progress flight gets no destination. "Flight in
     // progress" would be a wrong, fabricated reason in that landed case, so
-    // only claim it when it's actually true.
+    // only claim it when it's actually true; otherwise the succinct reason
+    // is picked from categorie, the same signal ScoreAnomalie/
+    // DirectnessGauge use for their own version of this message. Not fully
+    // precise in one narrow edge case (a resolved, OpenAP-recognized
+    // category whose trajectory was itself too short/undetectable) — the
+    // API doesn't expose that distinction, and it's rare enough not to be
+    // worth a reason code of its own.
+    let reason = "aircraft type not modeled by OpenAP";
+    if (categorie === null) reason = "aircraft type not recognized";
+    else if (categorie === "helicoptere") reason = "no performance model for rotorcraft";
     return (
       <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>
-        {enVol ? "Trajectory deviation not available (flight in progress)." : "Trajectory deviation not available for this flight."}
+        {enVol ? "Trajectory deviation not available (flight in progress)." : `Trajectory deviation not available (${reason}).`}
       </p>
     );
   }

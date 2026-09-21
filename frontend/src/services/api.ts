@@ -79,6 +79,15 @@ export interface FlightResponse {
    * what the aircraft database / the trajectory's geometry actually let us
    * resolve (brief: "if available"), never fabricated. */
   typecode: string | null;
+  /** The exact category the anomaly/directness models scored this flight
+   * against (services/aircraft_category.categorize) — null when the
+   * typecode itself is unresolved. Same field HistoryFlightEntry already
+   * carries; lets the frontend explain *why* a diagnostic is unavailable
+   * instead of guessing (e.g. JaugeEcart.tsx: a landed, fully-categorized
+   * flight can still have no ecart_trajectoire score if OpenAP doesn't
+   * model that specific typecode — a different reason than an
+   * unidentified aircraft). */
+  categorie: Categorie | null;
   immatriculation: string | null;
   origine: string | null;
   origine_ville: string | null;

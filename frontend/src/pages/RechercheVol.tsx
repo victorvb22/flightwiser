@@ -931,7 +931,7 @@ export function RechercheVol() {
                     </div>
                     <div>
                       <h4 style={{ ...cardTitleStyle, fontSize: 12, marginBottom: 12 }}>Deviation vs. optimal profile</h4>
-                      <JaugeEcart ecart={vol.ecart_trajectoire} enVol={vol.statut === "en_vol"} />
+                      <JaugeEcart ecart={vol.ecart_trajectoire} enVol={vol.statut === "en_vol"} categorie={vol.categorie} />
                     </div>
                     <div>
                       <h4 style={{ ...cardTitleStyle, fontSize: 12, marginBottom: 12 }}>Route directness</h4>
