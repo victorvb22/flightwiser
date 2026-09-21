@@ -11,7 +11,7 @@ create table if not exists flights_cache (
     ecart_trajectoire jsonb,           -- nullable: airborne flight, or too few points
     anomalie jsonb,                    -- nullable: same
     directness jsonb,                  -- nullable: same (great-circle distance too short, or airborne)
-    kpi_bonus jsonb,                   -- nullable: no bonus KPI implemented for now
+    kpi_bonus jsonb,                   -- nullable, always null: a bonus KPI isn't part of the product's scope, field kept for API-contract compatibility (brief section 8)
     source text not null,              -- "vedette" (served from the pool) at write time (never "cache" in the DB, "direct" only in older rows)
     calcule_le timestamptz not null default now()
 );
