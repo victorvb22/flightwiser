@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Search as SearchIcon, X } from "lucide-react";
 import { SplitFlapText } from "../components/SplitFlapText";
 import { PulseRing } from "../components/PulseRing";
+import { WakeupBanner } from "../components/WakeupBanner";
 import { VueTrajectoire } from "../components/visualisations/VueTrajectoire";
 import { HistogrammeScores } from "../components/visualisations/HistogrammeScores";
 import { ScoreAnomalie } from "../components/visualisations/ScoreAnomalie";
@@ -11,6 +12,7 @@ import type { Categorie, HistoryFlightEntry } from "../services/api";
 import { severityColor, worstSeverity } from "../lib/severity";
 import { useAppData } from "../lib/AppDataContext";
 import { useIsMobile } from "../lib/useIsMobile";
+import { useBackendWakeup } from "../lib/useBackendWakeup";
 
 type FeatureKey = "anomalie" | "ecart" | "directness";
 type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "calcule_le";
@@ -141,6 +143,7 @@ export function VueAgregee() {
   // fully unmounts/remounts on navigation as before, so the title's own
   // split-flap animation below still replays on every visit regardless.
   const isMobile = useIsMobile();
+  const wakingUp = useBackendWakeup();
   // The table is wider than a phone screen (8 columns) and scrolls
   // horizontally inside its own box, so an open flight's panel can't just
   // fill the table's width — it would run off-screen. On mobile it's sized
@@ -298,6 +301,7 @@ export function VueAgregee() {
         <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>
           Score distributions and full history across every flight ever searched — not just this session.
         </p>
+        <WakeupBanner visible={wakingUp} />
       </div>
 
       {loadError ? (
