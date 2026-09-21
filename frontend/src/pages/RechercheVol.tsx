@@ -662,6 +662,12 @@ export function RechercheVol() {
   // exactly like desktop's click always has. Never triggered on desktop
   // (isMobile is false there), so this changes nothing about its behaviour.
   function handleRandomButtonClick() {
+    // A leftover "not found" from a previous free-text search no longer
+    // describes anything relevant once Random flight is engaged, even in
+    // the mobile branch below where opening the menu doesn't run a search
+    // by itself yet — rechercherAleatoire() would clear it once it
+    // actually runs, but that's not guaranteed to happen from this one tap.
+    if (etat.statut === "erreur") setEtat({ statut: "repos" });
     if (isMobile && randomFilter === null && !randomLoading && !showRandomMenu) {
       setShowRandomMenu(true);
       return;
@@ -769,6 +775,33 @@ export function RechercheVol() {
               div just below rather than moving with this one: its own
               anchor point needs to stay put across that flip). */}
           <div className="random-flight-wrapper" onMouseEnter={openRandomMenu} onMouseLeave={closeRandomMenuSoon}>
+            {/* Mobile only — desktop keeps the error inline next to
+                "FLIGHT SEARCH" (the title row above), where there's room
+                for it. On a phone, this row (already flex, already
+                flex-end, cf. index.css's 640px block) is the only spare
+                horizontal space below the search bar that doesn't cost an
+                extra line of its own: flex-grow claims whatever the
+                filter label + button don't need, so the row's height never
+                changes — a long message is clipped with an ellipsis rather
+                than wrapping, which would grow it. */}
+            {isMobile && etat.statut === "erreur" && !flashError && (
+              <span
+                role="alert"
+                style={{
+                  flex: "1 1 auto",
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "var(--red)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginRight: 10,
+                }}
+              >
+                {etat.message}
+              </span>
+            )}
             {/* Stays visible once picked, hover or not — it's informational,
                 not part of the hover-to-open dropdown mechanism. Hidden
                 while typing a search (same condition as the button swap
@@ -826,6 +859,7 @@ export function RechercheVol() {
                     onClick={() => {
                       setRandomFilter(randomFilter === "en_vol" ? null : "en_vol");
                       setIdentifiant("");
+                      if (etat.statut === "erreur") setEtat({ statut: "repos" });
                       // Touch has no hover to close this with afterward (the
                       // desktop mouseleave-based auto-close never fires) —
                       // closing here only on mobile leaves desktop's own
@@ -842,6 +876,7 @@ export function RechercheVol() {
                     onClick={() => {
                       setRandomFilter(randomFilter === "atterri" ? null : "atterri");
                       setIdentifiant("");
+                      if (etat.statut === "erreur") setEtat({ statut: "repos" });
                       if (isMobile) setShowRandomMenu(false);
                     }}
                     style={{ ...randomMenuItemStyle, ...(randomFilter === "atterri" ? randomMenuItemActiveStyleLanded : null) }}
@@ -854,16 +889,6 @@ export function RechercheVol() {
           </div>
         </div>
       </div>
-
-      {/* Mobile-only counterpart to the desktop error span inside the
-          title's <h1> above — same condition, just a full-width row of its
-          own directly under the search bar/Random flight row instead of
-          squeezed in next to "FLIGHT SEARCH". */}
-      {isMobile && etat.statut === "erreur" && !flashError && (
-        <p role="alert" style={{ color: "var(--red)", fontSize: 14.5, fontWeight: 600, margin: "10px 0 0" }}>
-          {etat.message}
-        </p>
-      )}
 
       {/* Always on screen, like a permanent airport display board — filled
           with dashes until a search resolves, then the split-flap effect on

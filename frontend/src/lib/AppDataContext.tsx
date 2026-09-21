@@ -53,25 +53,55 @@ interface AppDataContextValue {
   anomalieParams: AnomalieParamsState;
   refreshAnomalieParams: () => void;
   /** A real, not-yet-served pool identifier for the Search page's
-   * placeholder — null only before the very first fetch resolves (retrying
-   * in the background if the backend is still asleep, cf. refreshExample's
-   * own comment). Fetched once on that page's first mount, then refreshed
-   * after every successful search/random draw (RechercheVol.tsx) so it
-   * keeps naming a flight that's still "undiscovered" — never on a timer:
-   * the whole point is that this stays whatever it last was, correct or
-   * not, across however long the backend then sits idle (cf. Render's
-   * free-tier sleep), rather than something that has to be kept fresh in
-   * the background. */
+   * placeholder — pinned (localStorage, cf. EXAMPLE_STORAGE_KEY below) once
+   * fetched, so it survives a hard reload too, not just cross-page
+   * navigation within the tab: null only on a device that has genuinely
+   * never fetched one yet (retrying in the background if the backend is
+   * still asleep, cf. refreshExample's own comment). Refreshed only after
+   * every successful search/random draw (RechercheVol.tsx), i.e. only once
+   * this exact flight has actually been used — never on a timer, and never
+   * just because the page remounted: the whole point is that this stays
+   * whatever it last was, correct or not, across however long the backend
+   * then sits idle (cf. Render's free-tier sleep), rather than something
+   * that has to be kept fresh in the background. */
   exampleIdentifiant: string | null;
   refreshExample: () => void;
 }
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
 
+// Persisted (not just held in this context's in-memory state, unlike
+// history/anomalieParams above) so the placeholder stays pinned to the
+// same real flight across a hard reload too, not just cross-page
+// navigation within one tab — cleaner to look at (doesn't visibly swap to
+// a different example on every refresh) and doesn't need a fetch every
+// time the Search page happens to remount. Wrapped in try/catch: a private
+// window or blocked site data can make localStorage throw on access, and
+// this is only ever a per-viewer convenience, never something that has to
+// succeed.
+const EXAMPLE_STORAGE_KEY = "flightwiser.exampleIdentifiant";
+
+function readStoredExample(): string | null {
+  try {
+    return localStorage.getItem(EXAMPLE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredExample(identifiant: string): void {
+  try {
+    localStorage.setItem(EXAMPLE_STORAGE_KEY, identifiant);
+  } catch {
+    // Ignored — the in-memory state (below) still gets the fresh value for
+    // the rest of this session either way.
+  }
+}
+
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryState>({ entries: null, loading: false, error: null });
   const [anomalieParams, setAnomalieParams] = useState<AnomalieParamsState>({ params: null, loading: false, error: null });
-  const [exampleIdentifiant, setExampleIdentifiant] = useState<string | null>(null);
+  const [exampleIdentifiant, setExampleIdentifiant] = useState<string | null>(readStoredExample);
 
   const refreshHistory = useCallback(() => {
     setHistory((s) => ({ ...s, loading: s.entries === null, error: null }));
@@ -114,7 +144,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       while (requestId === exampleRequestId.current && Date.now() < deadline) {
         try {
           const identifiant = await getExampleIdentifiant();
-          if (requestId === exampleRequestId.current) setExampleIdentifiant(identifiant);
+          if (requestId === exampleRequestId.current) {
+            setExampleIdentifiant(identifiant);
+            writeStoredExample(identifiant);
+          }
           return;
         } catch {
           await new Promise((resolve) => setTimeout(resolve, 3_000));
