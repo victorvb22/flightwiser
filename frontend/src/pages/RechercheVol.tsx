@@ -716,7 +716,12 @@ export function RechercheVol() {
               </span>
             )}
           </span>
-          {etat.statut === "erreur" && !flashError && (
+          {/* Desktop only — to the right of the title, where there's room
+              for it next to "FLIGHT SEARCH". On a phone-width screen this
+              same span would sit hard against (or wrap under) the title
+              itself; the mobile version below the search bar instead has
+              its own full-width row. */}
+          {!isMobile && etat.statut === "erreur" && !flashError && (
             <span role="alert" style={{ marginLeft: 12, color: "var(--red)", fontSize: 14.5, fontWeight: 600, whiteSpace: "nowrap" }}>
               {etat.message}
             </span>
@@ -849,6 +854,16 @@ export function RechercheVol() {
           </div>
         </div>
       </div>
+
+      {/* Mobile-only counterpart to the desktop error span inside the
+          title's <h1> above — same condition, just a full-width row of its
+          own directly under the search bar/Random flight row instead of
+          squeezed in next to "FLIGHT SEARCH". */}
+      {isMobile && etat.statut === "erreur" && !flashError && (
+        <p role="alert" style={{ color: "var(--red)", fontSize: 14.5, fontWeight: 600, margin: "10px 0 0" }}>
+          {etat.message}
+        </p>
+      )}
 
       {/* Always on screen, like a permanent airport display board — filled
           with dashes until a search resolves, then the split-flap effect on

@@ -53,16 +53,15 @@ interface AppDataContextValue {
   anomalieParams: AnomalieParamsState;
   refreshAnomalieParams: () => void;
   /** A real, not-yet-served pool identifier for the Search page's
-   * placeholder — null only before the very first fetch resolves. Fetched
-   * once on that page's first mount, then refreshed after every successful
-   * search/random draw (RechercheVol.tsx) so it keeps naming a flight
-   * that's still "undiscovered" — never on a timer: the whole point is that
-   * this stays whatever it last was, correct or not, across however long
-   * the backend then sits idle (cf. Render's free-tier sleep), rather than
-   * something that has to be kept fresh in the background. A failed
-   * refresh is silently ignored, keeping the previous value, same as
-   * everywhere else a background fetch shouldn't be allowed to blank
-   * something the user was already looking at. */
+   * placeholder — null only before the very first fetch resolves (retrying
+   * in the background if the backend is still asleep, cf. refreshExample's
+   * own comment). Fetched once on that page's first mount, then refreshed
+   * after every successful search/random draw (RechercheVol.tsx) so it
+   * keeps naming a flight that's still "undiscovered" — never on a timer:
+   * the whole point is that this stays whatever it last was, correct or
+   * not, across however long the backend then sits idle (cf. Render's
+   * free-tier sleep), rather than something that has to be kept fresh in
+   * the background. */
   exampleIdentifiant: string | null;
   refreshExample: () => void;
 }
@@ -96,18 +95,32 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // necessarily resolve in the order they were sent, so whichever happened
   // to answer last could silently overwrite a newer, already-correct
   // example with a stale one. Only the response to the most recently
-  // issued call is ever allowed to apply.
+  // issued call is ever allowed to apply; it also doubles as the retry
+  // loop's own cancellation check below (a newer call supersedes an older
+  // one's retries, not just its eventual success).
   const exampleRequestId = useRef(0);
   const refreshExample = useCallback(() => {
     const requestId = ++exampleRequestId.current;
-    // No loading/error state to track: on failure this just leaves
-    // whatever example was already showing (including null, pre-first-load)
-    // rather than surfacing an error for what's only ever a placeholder.
-    getExampleIdentifiant()
-      .then((identifiant) => {
-        if (requestId === exampleRequestId.current) setExampleIdentifiant(identifiant);
-      })
-      .catch(() => {});
+    (async () => {
+      // Retries rather than a single attempt: the very first call happens
+      // on this page's first-ever mount, which can land while the backend
+      // is still asleep (Render's free-tier sleep, same as
+      // useBackendWakeup.ts) — a single failed attempt there used to leave
+      // the placeholder on its plain fallback for the rest of the session,
+      // since nothing else was going to retry it. Same retry cadence/budget
+      // as useBackendWakeup.ts, for consistency, though this has no banner
+      // of its own to show while it waits.
+      const deadline = Date.now() + 75_000;
+      while (requestId === exampleRequestId.current && Date.now() < deadline) {
+        try {
+          const identifiant = await getExampleIdentifiant();
+          if (requestId === exampleRequestId.current) setExampleIdentifiant(identifiant);
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+        }
+      }
+    })();
   }, []);
 
   return (

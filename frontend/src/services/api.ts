@@ -199,8 +199,11 @@ export async function getExampleIdentifiant(): Promise<string> {
     // fresh — the browser's own HTTP cache otherwise has no reason to know
     // the response should differ each time and can silently reuse the
     // first one, observed directly (repeated draws left the placeholder
-    // showing the exact same identifier).
-    response = await fetch(`${API_BASE_URL}/api/v1/flights/example`, { cache: "no-store" });
+    // showing the exact same identifier). A bounded attempt timeout (cf.
+    // useBackendWakeup.ts's own ATTEMPT_TIMEOUT_MS) so a single attempt
+    // hanging while Render's free-tier container is still booting can't
+    // stall AppDataContext's retry loop for the whole call.
+    response = await fetch(`${API_BASE_URL}/api/v1/flights/example`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
   } catch {
     throw new ApiError("Backend unreachable");
   }
