@@ -726,8 +726,12 @@ export function RechercheVol() {
               for it next to "FLIGHT SEARCH". On a phone-width screen this
               same span would sit hard against (or wrap under) the title
               itself; the mobile version below the search bar instead has
-              its own full-width row. */}
-          {!isMobile && etat.statut === "erreur" && !flashError && (
+              its own full-width row. Not gated on !flashError any more
+              (same fix as the mobile span below) — withholding the text
+              until the pulse dot's own 550ms flash finished, then popping
+              it in, read as a blink rather than a clean, immediate
+              appearance. */}
+          {!isMobile && etat.statut === "erreur" && (
             <span role="alert" style={{ marginLeft: 12, color: "var(--red)", fontSize: 14.5, fontWeight: 600, whiteSpace: "nowrap" }}>
               {etat.message}
             </span>
