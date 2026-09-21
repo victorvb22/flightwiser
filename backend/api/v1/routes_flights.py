@@ -5,11 +5,29 @@ goes through pipeline.py and services/cache.py.
 from fastapi import APIRouter, HTTPException
 
 import pipeline
-from services import cache
+from services import cache, flight_pool, pool_tracking
 from services.aircraft_category import categorize
 from services.aircraft_database import get_registration, get_typecode
 
 router = APIRouter(prefix="/api/v1/flights", tags=["flights"])
+
+
+@router.get("/example")
+def get_example_identifiant():
+    """A real, not-yet-served pool identifier — backs the Search page's
+    placeholder (RechercheVol.tsx), so "e.g. ..." always names a flight
+    that actually exists in the pool rather than a made-up one. Registered
+    ahead of /{identifiant} for the same reason /history is. Deliberately
+    lighter than a real search: only draws from the pool (services.
+    flight_pool.draw_random, the same "never already served" pick the
+    Random flight button uses) and returns the bare identifier — no model
+    scoring, no cache write, no pool_served write, so fetching an example
+    never itself counts as serving one."""
+    served = pool_tracking.get_served_icao24s()
+    entry = flight_pool.draw_random(None, served)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No example available right now")
+    return {"identifiant": entry["identifiant"]}
 
 
 @router.get("/history")

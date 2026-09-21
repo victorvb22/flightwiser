@@ -188,6 +188,29 @@ export async function getRandomFlight(statut?: StatutVol): Promise<FlightRespons
   return response.json();
 }
 
+/** A real, not-yet-served pool identifier — backs the Search page's
+ * placeholder example, so "e.g. ..." always names a flight that actually
+ * exists in the pool. */
+export async function getExampleIdentifiant(): Promise<string> {
+  let response: Response;
+  try {
+    // no-store: this same URL (no params to vary it) is deliberately
+    // fetched again after every search/random draw so the example stays
+    // fresh — the browser's own HTTP cache otherwise has no reason to know
+    // the response should differ each time and can silently reuse the
+    // first one, observed directly (repeated draws left the placeholder
+    // showing the exact same identifier).
+    response = await fetch(`${API_BASE_URL}/api/v1/flights/example`, { cache: "no-store" });
+  } catch {
+    throw new ApiError("Backend unreachable");
+  }
+  if (!response.ok) {
+    throw new ApiError(`Backend responded ${response.status}`);
+  }
+  const body: { identifiant: string } = await response.json();
+  return body.identifiant;
+}
+
 export async function getSearchHistory(): Promise<HistoryFlightEntry[]> {
   let response: Response;
   try {

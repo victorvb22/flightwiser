@@ -470,7 +470,13 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
 export function RechercheVol() {
   const isMobile = useIsMobile();
   const wakingUp = useBackendWakeup();
-  const { refreshHistory } = useAppData();
+  const { refreshHistory, exampleIdentifiant, refreshExample } = useAppData();
+  // Only on the very first visit this session (exampleIdentifiant is cached
+  // above the router, cf. AppDataContext.tsx) — a revisit already has one,
+  // and every successful search/random draw below refreshes it anyway.
+  useEffect(() => {
+    if (exampleIdentifiant === null) refreshExample();
+  }, [exampleIdentifiant, refreshExample]);
   const [identifiant, setIdentifiant] = useState("");
   const [etat, setEtat] = useState<Etat>({ statut: "repos" });
   const [showRandomMenu, setShowRandomMenu] = useState(false);
@@ -597,6 +603,11 @@ export function RechercheVol() {
       // include this flight by the time the user gets there, instead of it
       // only showing up after that page's own next background refresh.
       refreshHistory();
+      // Keeps the placeholder's example naming a flight that's still
+      // "undiscovered" rather than the one just searched — cheap to do
+      // here since the backend is already known to be awake at this exact
+      // moment (cf. AppDataContext.tsx's own docstring on exampleIdentifiant).
+      refreshExample();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
     }
@@ -631,6 +642,8 @@ export function RechercheVol() {
       // flight looking "still armed" for a search that already ran.
       requestAnimationFrame(() => setRandomFilter(null));
       refreshHistory();
+      // Same reasoning as rechercher() above.
+      refreshExample();
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
     } finally {
@@ -730,7 +743,7 @@ export function RechercheVol() {
               className="search-input"
               value={identifiant}
               onChange={handleIdentifiantChange}
-              placeholder="Registration or callsign (e.g. F-GKXA, AFR1234)"
+              placeholder={exampleIdentifiant ? `Registration or callsign (e.g. ${exampleIdentifiant})` : "Registration or callsign"}
               style={inputStyle}
             />
             {/* Once a filter is picked, Random flight becomes the "loaded and
