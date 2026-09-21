@@ -611,8 +611,10 @@ export function RechercheVol() {
       // here since the backend is already known to be awake at this exact
       // moment (cf. AppDataContext.tsx's own docstring on exampleIdentifiant).
       refreshExample();
+      setIdentifiant("");
     } catch (err) {
       setEtat({ statut: "erreur", message: messageErreur(err) });
+      setIdentifiant("");
     }
   }
 
