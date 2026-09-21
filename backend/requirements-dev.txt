@@ -1,0 +1,5 @@
+# Test-only dependencies, kept separate from requirements.txt (the
+# deployed backend on Render never installs this file).
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1  # FastAPI's TestClient (tests/test_api.py) needs it explicitly
