@@ -74,6 +74,16 @@ def test_random_flight_respects_the_statut_filter(test_pool):
     assert response.json()["statut"] == "en_vol"
 
 
+def test_example_identifiant_is_one_of_the_pool_flights(test_pool):
+    # Bare identifier, not a full flight: no scoring, no cache write, no
+    # pool_served write -- cf. the route's own docstring.
+    response = client.get("/api/v1/flights/example")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body.keys()) == {"identifiant"}
+    assert body["identifiant"] in {"RYR2PY", "LTA660", "TEST999"}
+
+
 def test_search_history_endpoint_returns_a_list():
     # block_network makes cache.get_all_cached_flights() a silent empty
     # list -- this only checks the route wires that up correctly, not real

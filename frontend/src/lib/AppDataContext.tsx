@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import {
   ApiError,
   getAnomalieModelParams,
+  getExampleIdentifiant,
   getSearchHistory,
   type AnomalieCategoryParams,
   type HistoryFlightEntry,
@@ -51,6 +52,19 @@ interface AppDataContextValue {
   refreshHistory: () => void;
   anomalieParams: AnomalieParamsState;
   refreshAnomalieParams: () => void;
+  /** A real, not-yet-served pool identifier for the Search page's
+   * placeholder — null only before the very first fetch resolves. Fetched
+   * once on that page's first mount, then refreshed after every successful
+   * search/random draw (RechercheVol.tsx) so it keeps naming a flight
+   * that's still "undiscovered" — never on a timer: the whole point is that
+   * this stays whatever it last was, correct or not, across however long
+   * the backend then sits idle (cf. Render's free-tier sleep), rather than
+   * something that has to be kept fresh in the background. A failed
+   * refresh is silently ignored, keeping the previous value, same as
+   * everywhere else a background fetch shouldn't be allowed to blank
+   * something the user was already looking at. */
+  exampleIdentifiant: string | null;
+  refreshExample: () => void;
 }
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
@@ -58,6 +72,7 @@ const AppDataContext = createContext<AppDataContextValue | null>(null);
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryState>({ entries: null, loading: false, error: null });
   const [anomalieParams, setAnomalieParams] = useState<AnomalieParamsState>({ params: null, loading: false, error: null });
+  const [exampleIdentifiant, setExampleIdentifiant] = useState<string | null>(null);
 
   const refreshHistory = useCallback(() => {
     setHistory((s) => ({ ...s, loading: s.entries === null, error: null }));
@@ -73,8 +88,34 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .catch((err) => setAnomalieParams((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" })));
   }, []);
 
+  // Guards against a real race, not a hypothetical one: RechercheVol.tsx's
+  // own mount effect calls refreshExample() once, but StrictMode's
+  // dev-only double-invoke fires it twice, and a fast user can trigger it
+  // again (another search/random draw) before an earlier call has
+  // resolved — reproduced directly, two in-flight requests do not
+  // necessarily resolve in the order they were sent, so whichever happened
+  // to answer last could silently overwrite a newer, already-correct
+  // example with a stale one. Only the response to the most recently
+  // issued call is ever allowed to apply.
+  const exampleRequestId = useRef(0);
+  const refreshExample = useCallback(() => {
+    const requestId = ++exampleRequestId.current;
+    // No loading/error state to track: on failure this just leaves
+    // whatever example was already showing (including null, pre-first-load)
+    // rather than surfacing an error for what's only ever a placeholder.
+    getExampleIdentifiant()
+      .then((identifiant) => {
+        if (requestId === exampleRequestId.current) setExampleIdentifiant(identifiant);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
-    <AppDataContext.Provider value={{ history, refreshHistory, anomalieParams, refreshAnomalieParams }}>{children}</AppDataContext.Provider>
+    <AppDataContext.Provider
+      value={{ history, refreshHistory, anomalieParams, refreshAnomalieParams, exampleIdentifiant, refreshExample }}
+    >
+      {children}
+    </AppDataContext.Provider>
   );
 }
 
