@@ -88,6 +88,33 @@ def get_all_cached_flights() -> list[dict[str, Any]]:
     return rows
 
 
+def touch_flight(cache_id: str) -> None:
+    """Bumps calcule_le to now, without touching anything else -- for a
+    cache HIT (pipeline.py: the flight was already computed earlier today),
+    where store_flight is deliberately never called again (no point paying
+    for a full re-write of an unchanged trajectory/scores payload just to
+    serve the same result a second time). Without this, calcule_le stays
+    frozen at whenever the row was first computed, and the Aggregate view
+    shows it under a column literally labelled "Searched" (VueAgregee.tsx)
+    -- a flight searched again hours or days later would silently sit
+    wherever its first computation left it in that recency sort, instead of
+    where a second search actually belongs: found and fixed from a real
+    report (searched today, not visible near the top of the history).
+    Same best-effort policy as store_flight: failure logged, never
+    surfaced."""
+    try:
+        response = requests.patch(
+            _TABLE_URL,
+            params={"id": f"eq.{cache_id}"},
+            json={"calcule_le": datetime.now(timezone.utc).isoformat()},
+            headers=_HEADERS,
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        logger.warning("Could not touch cache for %s", cache_id, exc_info=True)
+
+
 def store_flight(cache_id: str, result: dict[str, Any]) -> None:
     """Upserts the computed result for this flight. Failure logged, never
     surfaced: the user already has their response, don't fail it because the
