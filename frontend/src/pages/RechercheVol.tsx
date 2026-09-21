@@ -209,6 +209,13 @@ function StatutBadge({
     { score: ecartScore, good: 0 },
     { score: directnessScore, good: 1 },
   ]);
+  // Landed but no score at all (unidentified aircraft, cf. pipeline.py --
+  // the Flight diagnostic card below stays on its "not available" state):
+  // the pill falls back to the neutral --surface-2 background, against
+  // which the near-black text used everywhere else would be almost
+  // unreadable -- white at 80% opacity instead, same as the rest of the
+  // app's muted-on-dark text.
+  const noScore = !enVol && worst === null;
   const background = enVol ? "var(--blue)" : worst !== null ? severityColor(worst.score, worst.good) : "var(--surface-2)";
   return (
     <span
@@ -219,7 +226,7 @@ function StatutBadge({
         borderRadius: 999,
         border: "1px solid var(--border-strong)",
         background,
-        color: "#04110c",
+        color: noScore ? "rgba(255, 255, 255, 0.8)" : "#04110c",
         fontWeight: 700,
         fontSize: 14,
       }}
