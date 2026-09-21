@@ -6,13 +6,26 @@ import { useCountUp } from "../../lib/useCountUp";
  * own endpoints — a signal neither the anomaly score (blind to route shape)
  * nor the deviation gauge (compares altitude/speed profile, not routing)
  * can see: holding patterns, diversions, or extended ATC vectoring. */
-export function DirectnessGauge({ directness }: { directness: Directness | null | undefined }) {
+export function DirectnessGauge({
+  directness,
+  enVol = false,
+}: {
+  directness: Directness | null | undefined;
+  enVol?: boolean;
+}) {
   // Called unconditionally (rules of hooks) — target is 0 while there's
   // nothing to show yet, same pattern as JaugeEcart.
   const pct = useCountUp(directness ? directness.ratio * 100 : 0);
 
   if (!directness) {
-    return <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>Route directness not available (flight in progress).</p>;
+    // Same distinction as ScoreAnomalie/JaugeEcart: a landed flight can
+    // also legitimately have no score (unrecognized aircraft type), so
+    // "flight in progress" would be a fabricated reason in that case.
+    return (
+      <p style={{ color: "var(--text-faint)", fontSize: 14.5 }}>
+        {enVol ? "Route directness not available (flight in progress)." : "Route directness not available (aircraft type not recognized)."}
+      </p>
+    );
   }
 
   const color = severityColor(directness.score, 1);
