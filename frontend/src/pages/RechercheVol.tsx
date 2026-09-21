@@ -3,6 +3,7 @@ import { Fingerprint, Gauge, Plane, PlaneLanding, PlaneTakeoff, Search, Shuffle,
 import { ApiError, FlightNotFoundError, getFlight, getRandomFlight, type FlightResponse, type StatutVol } from "../services/api";
 import { SplitFlapText } from "../components/SplitFlapText";
 import { PulseRing } from "../components/PulseRing";
+import { WakeupBanner } from "../components/WakeupBanner";
 import { VueTrajectoire } from "../components/visualisations/VueTrajectoire";
 import { JaugeEcart } from "../components/visualisations/JaugeEcart";
 import { ScoreAnomalie } from "../components/visualisations/ScoreAnomalie";
@@ -10,6 +11,7 @@ import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
 import { severityColor, worstSeverity } from "../lib/severity";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useAppData } from "../lib/AppDataContext";
+import { useBackendWakeup } from "../lib/useBackendWakeup";
 
 type Etat =
   | { statut: "repos" }
@@ -452,6 +454,7 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
 
 export function RechercheVol() {
   const isMobile = useIsMobile();
+  const wakingUp = useBackendWakeup();
   const { refreshHistory } = useAppData();
   const [identifiant, setIdentifiant] = useState("");
   const [etat, setEtat] = useState<Etat>({ statut: "repos" });
@@ -683,6 +686,7 @@ export function RechercheVol() {
         <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>
           Real trajectory, deviation vs. optimal profile, anomaly score, route directness — from pre-recorded ADS-B data.
         </p>
+        <WakeupBanner visible={wakingUp} />
       </div>
 
       {/* Wrapped in the same grid as the panel below (reused, not
