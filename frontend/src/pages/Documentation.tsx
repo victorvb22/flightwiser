@@ -457,7 +457,10 @@ export function Documentation() {
           from a separate project, trained on the same OpenSky day but on synthetically injected anomalies (parametrised go-arounds, holding
           circuits, and rapid descents — real labelled examples of any of these are scarce by nature) rather than confirmed real ones, so treat the
           tag as an indicative best guess, not a diagnosis. A "normal" result from that model isn't a contradiction of the flagged score above — it
-          means the anomaly doesn't match any of these three specific patterns, which is itself useful information. Full write-up, dataset
+          means the anomaly doesn't match any of these three specific patterns, which is itself useful information.{" "}
+          <strong style={{ color: "var(--text)" }}>3,109 flights</strong> (1,555 normal, ~518 of each injected pattern), a tuned Random Forest
+          (GridSearchCV over tree count/depth), <strong style={{ color: "var(--text)" }}>98.4% accuracy</strong> on a held-out 622-flight test set —
+          holding pattern is essentially perfect (F1 1.00), emergency descent is the weakest class (F1 0.96, recall 0.95). Full write-up, dataset
           construction, and evaluation:{" "}
           <a href="https://github.com/victorvb22/flight-trajectory-detection" target="_blank" rel="noreferrer" style={{ color: "#fff" }}>
             github.com/victorvb22/flight-trajectory-detection
