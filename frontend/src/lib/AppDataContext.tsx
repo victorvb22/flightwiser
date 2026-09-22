@@ -129,15 +129,35 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const refreshHistory = useCallback(() => {
     const requestId = ++historyRequestId.current;
     setHistory((s) => ({ ...s, loading: s.entries === null, error: null }));
-    getSearchHistory()
-      .then((entries) => {
-        if (requestId === historyRequestId.current) setHistory({ entries, loading: false, error: null });
-      })
-      .catch((err) => {
-        if (requestId === historyRequestId.current) {
-          setHistory((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" }));
+    (async () => {
+      // Retries rather than a single attempt: this is the very first
+      // history fetch of the session when it's called right after a
+      // search on the Search page (RechercheVol.tsx), which can land
+      // while the backend is still waking up (Render's free-tier sleep,
+      // same as useBackendWakeup.ts/refreshExample below) — a single
+      // failed attempt here used to leave the Aggregate view stuck
+      // showing only the one flight addToHistory had already spliced in
+      // client-side (plus "No values yet" on every chart), with nothing
+      // left to retry it short of a full page reload: VueAgregee's own
+      // mount effect calls this exact function, so revisiting the page
+      // without reloading never issues a fresh attempt on its own. Same
+      // retry cadence/budget as refreshExample, for consistency.
+      const deadline = Date.now() + 75_000;
+      while (requestId === historyRequestId.current && Date.now() < deadline) {
+        try {
+          const entries = await getSearchHistory();
+          if (requestId === historyRequestId.current) setHistory({ entries, loading: false, error: null });
+          return;
+        } catch (err) {
+          if (requestId !== historyRequestId.current) return;
+          if (Date.now() + 3_000 >= deadline) {
+            setHistory((s) => ({ ...s, loading: false, error: err instanceof ApiError ? err.message : "Unexpected error" }));
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
         }
-      });
+      }
+    })();
   }, []);
 
   const addToHistory = useCallback((vol: FlightResponse) => {
