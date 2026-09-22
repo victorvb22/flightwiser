@@ -126,9 +126,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // missing. Only the response to the most recently issued call is ever
   // allowed to apply.
   const historyRequestId = useRef(0);
+  // Whether the REAL, full history has ever actually loaded this session —
+  // deliberately separate from `entries === null`, which addToHistory below
+  // falsifies the instant a search resolves (it splices in the one flight
+  // just found, client-side, before this ever gets a chance to run). Without
+  // this, `loading` would flip to false on that splice alone, and every
+  // chart would show "No values yet" (a real empty result) instead of
+  // "Values loading" while the rest of the history is still on its way —
+  // wrong on two counts: the data isn't actually empty, and (in
+  // VueAgregee.tsx) the loading pulse next to the title would never show
+  // either, even though a real background fetch is still in flight.
+  const historyEverLoaded = useRef(false);
   const refreshHistory = useCallback(() => {
     const requestId = ++historyRequestId.current;
-    setHistory((s) => ({ ...s, loading: s.entries === null, error: null }));
+    setHistory((s) => ({ ...s, loading: !historyEverLoaded.current, error: null }));
     (async () => {
       // Retries rather than a single attempt: this is the very first
       // history fetch of the session when it's called right after a
@@ -146,6 +157,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       while (requestId === historyRequestId.current && Date.now() < deadline) {
         try {
           const entries = await getSearchHistory();
+          historyEverLoaded.current = true;
           if (requestId === historyRequestId.current) setHistory({ entries, loading: false, error: null });
           return;
         } catch (err) {
