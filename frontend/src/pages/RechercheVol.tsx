@@ -470,13 +470,26 @@ function PanneauAppareil({ vol }: { vol: FlightResponse | null }) {
 export function RechercheVol() {
   const isMobile = useIsMobile();
   const wakingUp = useBackendWakeup();
-  const { refreshHistory, addToHistory, exampleIdentifiant, refreshExample } = useAppData();
+  const { history, refreshHistory, addToHistory, exampleIdentifiant, refreshExample } = useAppData();
   // Only on the very first visit this session (exampleIdentifiant is cached
   // above the router, cf. AppDataContext.tsx) — a revisit already has one,
   // and every successful search/random draw below refreshes it anyway.
   useEffect(() => {
     if (exampleIdentifiant === null) refreshExample();
   }, [exampleIdentifiant, refreshExample]);
+  // Same idea, for the Aggregate view's history: pre-fetches it in the
+  // background the moment this page (almost always the first one visited)
+  // mounts, rather than only starting that fetch once the user actually
+  // navigates to Aggregate view — so it's often already loaded, or at least
+  // well under way, by the time they get there. Only when nothing's loaded
+  // yet this session (entries === null): a revisit doesn't need to refetch
+  // just from passing through Search again, and a search run before this
+  // resolves is harmless either way (AppDataContext.tsx's own requestId
+  // guard means whichever refreshHistory() call was issued last always
+  // wins — the one below, after a search, or this one, whichever is later).
+  useEffect(() => {
+    if (history.entries === null) refreshHistory();
+  }, [history.entries, refreshHistory]);
   const [identifiant, setIdentifiant] = useState("");
   const [etat, setEtat] = useState<Etat>({ statut: "repos" });
   const [showRandomMenu, setShowRandomMenu] = useState(false);
