@@ -1,8 +1,15 @@
 -- Flightwiser — Supabase schema (brief section 9)
 -- Paste this once into the Supabase dashboard's SQL editor (Project > SQL Editor).
--- Accessed exclusively via services/cache.py, using the secret key (bypasses RLS) —
--- no other client (frontend included) should touch these tables directly,
--- so no RLS policy needs to be defined here.
+-- Accessed exclusively via services/cache.py, using the secret key (bypasses RLS
+-- entirely, by Supabase's own design) — no other client (frontend included)
+-- should ever touch these tables directly. RLS is still enabled below, with
+-- no policies defined: the project's own publishable/anon key isn't a
+-- secret by design (Supabase flagged this directly -- "Table publicly
+-- accessible" -- rls_disabled_in_public, 2026-09-19), so leaving RLS off
+-- would let anyone holding it read/write/delete either table, even though
+-- nothing in this codebase ever uses that key. Enabling RLS with zero
+-- policies denies every role except the secret key's, which bypasses RLS
+-- regardless -- no behaviour change for the app itself.
 
 create table if not exists flights_cache (
     id text primary key,               -- icao24 + UTC date, e.g. "39de4e_2026-09-16"
@@ -22,6 +29,8 @@ create table if not exists flights_cache (
 -- into the Supabase SQL editor for a database already in place.
 alter table flights_cache add column if not exists directness jsonb;
 
+alter table flights_cache enable row level security;
+
 -- flights_historical (a separate batch import, once used by the Aggregate
 -- view by date) has been removed: the Aggregate view now reads
 -- flights_cache (GET /api/v1/flights/history) — a flight searched through
@@ -38,3 +47,5 @@ create table if not exists pool_served (
     icao24 text primary key,
     servi_le timestamptz not null default now()
 );
+
+alter table pool_served enable row level security;
