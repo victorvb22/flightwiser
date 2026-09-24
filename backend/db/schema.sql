@@ -31,6 +31,17 @@ alter table flights_cache add column if not exists directness jsonb;
 
 alter table flights_cache enable row level security;
 
+-- From 2026-10-30, Supabase stops auto-granting Data API access to new
+-- tables in public -- without this, a fresh CREATE TABLE (e.g. this file
+-- rerun on a new project after that date) would leave PostgREST unable to
+-- reach the table at all, "permission denied", even for the backend's own
+-- secret key (service_role). Existing tables keep their current grants
+-- regardless (Supabase's own migration email, 2026-09-24) -- this is only
+-- for a table created fresh from here on. Only service_role, matching the
+-- RLS-with-no-policies choice above: nothing else is meant to reach this
+-- table at all, so there's no reason to also grant anon/authenticated.
+grant select, insert, update, delete on public.flights_cache to service_role;
+
 -- flights_historical (a separate batch import, once used by the Aggregate
 -- view by date) has been removed: the Aggregate view now reads
 -- flights_cache (GET /api/v1/flights/history) — a flight searched through
@@ -49,3 +60,6 @@ create table if not exists pool_served (
 );
 
 alter table pool_served enable row level security;
+
+-- Same reasoning as flights_cache's own grant above.
+grant select, insert, update, delete on public.pool_served to service_role;
