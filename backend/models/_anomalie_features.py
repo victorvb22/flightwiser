@@ -19,8 +19,7 @@ simplification rather than over-fitting transforms with no measurable gain.
 import numpy as np
 
 from services.aircraft_category import CATEGORIES, categorize
-
-MIN_POINTS = 5
+from ._shared import MIN_POINTS
 
 FEATURES = [
     "vitesse_moyenne",

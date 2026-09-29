@@ -15,6 +15,8 @@ trajectory, once the latter is converted to this same format).
 import numpy as np
 import pandas as pd
 
+from services.geo import haversine_km  # noqa: F401 -- re-exported, cf. tests/test_trajectory_cleaning.py and services/airports.py
+
 SPEED_SMOOTHING_WINDOW = 5
 # A point whose implied speed exceeds this threshold on both sides (the
 # incoming AND outgoing segment) is a corrupted ADS-B point (a one-off
@@ -38,17 +40,6 @@ MAX_PLAUSIBLE_ALTITUDE_M = 13716.0
 # well beyond real climb/descent rates). Same kind of ADS-B artifact as
 # altitude: a few points in the historical dataset exceed 90 m/s.
 MAX_PLAUSIBLE_VERTICAL_RATE_MS = 30.0
-
-EARTH_RADIUS_KM = 6371.0
-
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    """Haversine distance in km between two points (scalars or numpy arrays)."""
-    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
 
 
 def drop_missing_position(points: list[tuple]) -> list[tuple]:

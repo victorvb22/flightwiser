@@ -41,3 +41,34 @@ def test_a_cache_hit_still_touches_calcule_le(test_pool, monkeypatch):
     assert result is not None
     assert result["source"] == "cache"
     assert touched_ids == [cache.build_cache_id("4ca56b")]
+
+
+def test_an_empty_trajectory_does_not_crash_flight_metadata(test_pool, monkeypatch):
+    # Real bug: opensky_live.py only checks trajectory emptiness BEFORE
+    # trajectory_cleaning's filters run, not after -- a track that loses
+    # every point during cleaning (e.g. no usable position at all) can end
+    # up stored with trajectoire == [], and _flight_metadata unconditionally
+    # indexed trajectoire[-1]/trajectoire[0] on every response, crashing
+    # with an IndexError (a 500) instead of degrading the derived fields to
+    # None the way every other "unknown" field on this response already does.
+    monkeypatch.setattr(cache, "touch_flight", lambda cache_id: None)
+    monkeypatch.setattr(
+        cache,
+        "get_cached_flight",
+        lambda cache_id: {
+            "statut": "en_vol",
+            "trajectoire": [],
+            "ecart_trajectoire": None,
+            "anomalie": None,
+            "directness": None,
+            "kpi_bonus": None,
+        },
+    )
+
+    result = pipeline.get_or_compute_flight("RYR2PY")
+
+    assert result is not None
+    assert result["altitude_actuelle"] is None
+    assert result["vitesse_actuelle"] is None
+    assert result["origine"] is None
+    assert result["destination"] is None

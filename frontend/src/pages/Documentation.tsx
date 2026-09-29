@@ -3,7 +3,8 @@ import { ExternalLink } from "lucide-react";
 import { SplitFlapText } from "../components/SplitFlapText";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useAppData } from "../lib/AppDataContext";
-import type { AnomalieCategoryParams } from "../services/api";
+import { CATEGORY_LABELS } from "../lib/categoryLabels";
+import type { AnomalieCategoryParams, Categorie } from "../services/api";
 
 const cardStyle: React.CSSProperties = {
   border: "1px solid var(--border)",
@@ -40,17 +41,6 @@ const codeStyle: React.CSSProperties = {
   color: "var(--text)",
 };
 
-// Internal category keys mapped to the English labels shown here. All four
-// come from services/aircraft_category.py's table (typecode -> category) —
-// the anomaly and route-directness models both train on all four;
-// trajectory-deviation doesn't use categories at all (a live per-typecode
-// OpenAP simulation, see its own section below).
-const CATEGORY_LABELS: Record<string, string> = {
-  avion_ligne: "Airliner",
-  jet_affaire: "Business jet",
-  petit_avion: "Small aircraft",
-  helicoptere: "Helicopter",
-};
 
 // Horizontal padding of a card on a phone-width screen (cardStyle's 24
 // everywhere else) — a Table there bleeds out by exactly this much on both
@@ -301,9 +291,9 @@ export function Documentation() {
 
   // Anomaly-model category order — directness (further down) trains on the
   // same four categories and reuses this exact order/labels; trajectory-
-  // deviation doesn't use categories at all (cf. CATEGORY_LABELS comment
-  // above).
-  const categoryOrder = ["avion_ligne", "jet_affaire", "petit_avion", "helicoptere"];
+  // deviation doesn't use categories at all. All four come from
+  // services/aircraft_category.py's table (typecode -> category).
+  const categoryOrder: Categorie[] = ["avion_ligne", "jet_affaire", "petit_avion", "helicoptere"];
 
   return (
     <div>

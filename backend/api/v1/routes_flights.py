@@ -103,7 +103,10 @@ def get_random_flight(statut: str | None = None):
     """Random flight drawn from the pool (cf. pipeline.py, the deployed
     backend can't call OpenSky live) — no identifier needed, handy for a demo.
     `statut` optionally filters to "en_vol" or "atterri"."""
-    want_on_ground = {"atterri": True, "en_vol": False}.get(statut) if statut else None
+    statut_filters = {"atterri": True, "en_vol": False}
+    if statut is not None and statut not in statut_filters:
+        raise HTTPException(status_code=400, detail=f"Invalid statut '{statut}' — must be 'atterri' or 'en_vol'")
+    want_on_ground = statut_filters.get(statut) if statut else None
     result = pipeline.get_random_flight(want_on_ground)
     if result is None:
         raise HTTPException(status_code=404, detail="No flight available right now")

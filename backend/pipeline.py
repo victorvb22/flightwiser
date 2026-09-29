@@ -132,10 +132,16 @@ def _flight_metadata(icao24: str, result: dict) -> dict:
     every response instead of requiring a cache schema migration for static/
     re-derivable metadata."""
     trajectoire = result["trajectoire"]
-    dernier = trajectoire[-1]
-    origine_info = find_nearest_airport_info(trajectoire[0]["lat"], trajectoire[0]["lon"])
+    # A pool entry can legitimately end up with an empty trajectory (every
+    # waypoint dropped by trajectory_cleaning's own filters, e.g. no usable
+    # position at all) -- opensky_live.py only checks emptiness BEFORE
+    # cleaning, not after, so this has to be tolerated here rather than
+    # assumed away: every field below that depends on a real point degrades
+    # to None (never fabricated) instead of indexing into an empty list.
+    dernier = trajectoire[-1] if trajectoire else None
+    origine_info = find_nearest_airport_info(trajectoire[0]["lat"], trajectoire[0]["lon"]) if trajectoire else None
     destination_info = None
-    if result["statut"] == "atterri":
+    if dernier is not None and result["statut"] == "atterri":
         # Only once landed: before touchdown, the nearest airport to the
         # current position isn't the real destination.
         destination_info = find_nearest_airport_info(dernier["lat"], dernier["lon"])
@@ -152,6 +158,6 @@ def _flight_metadata(icao24: str, result: dict) -> dict:
         "origine_ville": origine_info["ville"] if origine_info else None,
         "destination": destination_info["icao"] if destination_info else None,
         "destination_ville": destination_info["ville"] if destination_info else None,
-        "altitude_actuelle": dernier["altitude"],
-        "vitesse_actuelle": dernier["vitesse"],
+        "altitude_actuelle": dernier["altitude"] if dernier else None,
+        "vitesse_actuelle": dernier["vitesse"] if dernier else None,
     }

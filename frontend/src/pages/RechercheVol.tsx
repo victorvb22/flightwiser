@@ -551,14 +551,22 @@ export function RechercheVol() {
   const PULSE_SLOT = 34; // matches PulseRing's own SVG size exactly
 
   // The Flight Diagnostic card's collapsed (pre-search) height is pinned to
-  // the characteristics row's own rendered height, so the two line up
-  // side by side instead of the diagnostic card being a token sliver next
-  // to a much taller row. Measured once — the row's height doesn't change
-  // with its content (always a single line of tiles).
+  // the characteristics row's own rendered height, so the two line up side
+  // by side instead of the diagnostic card being a token sliver next to a
+  // much taller row. A ResizeObserver, not a one-shot mount measurement:
+  // the row's content doesn't change, but its rendered height still can
+  // (e.g. a desktop window narrowed below the point tiles wrap), same
+  // reasoning as VueAgregee.tsx's own scrollBoxWidth observer.
   const panneauRef = useRef<HTMLDivElement>(null);
   const [panneauHeight, setPanneauHeight] = useState(28);
   useEffect(() => {
-    if (panneauRef.current) setPanneauHeight(panneauRef.current.offsetHeight);
+    const el = panneauRef.current;
+    if (!el) return;
+    const measure = () => setPanneauHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const [trajContentRef, trajContentHeight] = useAutoHeight();
@@ -593,6 +601,15 @@ export function RechercheVol() {
   // the menu right as the pointer arrives, so it only reopens on a second
   // hover. Cancelling a pending close on the next mouseenter absorbs that.
   const closeMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // A pending close (armed by closeRandomMenuSoon on mouseleave) firing
+    // ~200ms after this page unmounts would call setShowRandomMenu against
+    // an unmounted component's stale closure — React 18 tolerates it
+    // silently, but there's no reason to leave the timer running.
+    return () => {
+      if (closeMenuTimer.current) clearTimeout(closeMenuTimer.current);
+    };
+  }, []);
   function openRandomMenu() {
     if (closeMenuTimer.current) {
       clearTimeout(closeMenuTimer.current);

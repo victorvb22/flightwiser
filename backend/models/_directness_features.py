@@ -16,22 +16,13 @@ between training (scripts/train_directness.py) and serving
 _anomalie_features.py does for its own model.
 """
 
-import numpy as np
+from services.geo import haversine_km
+from ._shared import MIN_POINTS
 
-MIN_POINTS = 5
 # Below this great-circle distance, the ratio is dominated by ADS-B position
 # noise rather than a real detour (a local there-and-back or a touch-and-go
 # doesn't really have a "direct route" to measure).
 MIN_GREAT_CIRCLE_KM = 5.0
-EARTH_RADIUS_KM = 6371.0
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    return float(2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a)))
 
 
 def extract_route_directness(waypoints: list[dict]) -> float | None:
@@ -45,11 +36,11 @@ def extract_route_directness(waypoints: list[dict]) -> float | None:
     lats = [w["lat"] for w in waypoints]
     lons = [w["lon"] for w in waypoints]
 
-    great_circle_km = _haversine_km(lats[0], lons[0], lats[-1], lons[-1])
+    great_circle_km = float(haversine_km(lats[0], lons[0], lats[-1], lons[-1]))
     if great_circle_km < MIN_GREAT_CIRCLE_KM:
         return None
 
-    flown_km = sum(_haversine_km(lats[i], lons[i], lats[i + 1], lons[i + 1]) for i in range(len(lats) - 1))
+    flown_km = sum(float(haversine_km(lats[i], lons[i], lats[i + 1], lons[i + 1])) for i in range(len(lats) - 1))
     if flown_km <= 0:
         return None
 

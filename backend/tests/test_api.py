@@ -74,6 +74,18 @@ def test_random_flight_respects_the_statut_filter(test_pool):
     assert response.json()["statut"] == "en_vol"
 
 
+def test_random_flight_rejects_an_invalid_statut_filter(test_pool):
+    # Real bug: an invalid statut value used to fall through to `None` in
+    # the {"atterri": True, "en_vol": False}.get(statut) lookup -- the exact
+    # same code path as "no filter requested" -- silently returning a flight
+    # of either status instead of telling the caller their filter was wrong.
+    response = client.get("/api/v1/flights/random/search?statut=ATTERRI")
+    assert response.status_code == 400
+
+    response = client.get("/api/v1/flights/random/search?statut=landed")
+    assert response.status_code == 400
+
+
 def test_example_identifiant_is_one_of_the_pool_flights(test_pool):
     # Bare identifier, not a full flight: no scoring, no cache write, no
     # pool_served write -- cf. the route's own docstring.

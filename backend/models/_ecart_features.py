@@ -13,7 +13,9 @@ import numpy as np
 from openap.gen import FlightGenerator
 from openap.phase import FlightPhase
 
-MIN_POINTS = 5
+from services.geo import haversine_km  # noqa: F401 -- re-exported, cf. models/anomaly_type.py
+from ._shared import MIN_POINTS
+
 MIN_CRUISE_KM = 10.0  # floor for a flight too short to have a real cruise phase (MVP simplification)
 # Physical ceiling: the longest non-stop commercial flight is ~17,000 km;
 # beyond that, a distance computed from the trajectory's endpoints is
@@ -26,17 +28,7 @@ M_TO_FT = 3.280839895
 MS_TO_KT = 1.9438444924
 MS_TO_FPM = 196.8503937
 
-EARTH_RADIUS_KM = 6371.0
-
 _PHASE_MAP = {"CL": "montee", "CR": "croisiere", "LVL": "croisiere", "DE": "descente"}
-
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
 
 
 def resolve_typecode(typecode: str) -> FlightGenerator | None:

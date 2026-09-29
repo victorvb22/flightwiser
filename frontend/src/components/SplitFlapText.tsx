@@ -147,7 +147,7 @@ export function SplitFlapText({
       cancelled = true;
       if (activeInterval) clearInterval(activeInterval);
     };
-  }, [text, tickMs, reverse, sequential]);
+  }, [text, tickMs, reverse, sequential, onSettled]);
 
   return (
     <span style={style} aria-label={text}>

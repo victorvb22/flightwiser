@@ -33,6 +33,7 @@ AIRCRAFT_DB_CACHE = REFERENCE_DIR / "aircraft_database.csv"
 BUNDLED_PATH = REFERENCE_DIR / "aircraft_database_trimmed.parquet"
 
 _aircraft_db: pd.DataFrame | None = None
+_by_icao24: dict[str, dict[str, str | None]] | None = None
 
 
 def download_if_missing(url: str, cache_path: Path) -> Path:
@@ -70,6 +71,29 @@ def _get_aircraft_db() -> pd.DataFrame:
     return _aircraft_db
 
 
+def _get_by_icao24() -> dict[str, dict[str, str | None]]:
+    """icao24 -> {"typecode", "registration"}, built once. get_typecode/
+    get_registration used to do a full linear scan of the ~94 MB DataFrame
+    (`db[db["icao24"] == ...]`) on every single call despite this module's
+    own docstring claiming the database is "loaded once... not something to
+    re-read on every request" — the DataFrame load was cached, but every
+    LOOKUP into it wasn't. find_by_identifiant (services/flight_pool.py)
+    calls get_registration once per pool entry when resolving a search by
+    callsign, so a single search could cost O(pool_size x db_size). Same
+    dict-index pattern services/flight_pool.py already uses for its own
+    icao24 lookups (_by_icao24 there)."""
+    global _by_icao24
+    if _by_icao24 is None:
+        db = _get_aircraft_db()
+        by_icao24: dict[str, dict[str, str | None]] = {}
+        for row in db.itertuples():
+            typecode = None if pd.isna(row.typecode) or row.typecode == "" else row.typecode
+            registration = None if pd.isna(row.registration) or row.registration == "" else row.registration
+            by_icao24[row.icao24] = {"typecode": typecode, "registration": registration}
+        _by_icao24 = by_icao24
+    return _by_icao24
+
+
 def resolve_icao24_by_registration(registration: str) -> str | None:
     """Exact (case/whitespace-insensitive) lookup of an icao24 from a
     registration, e.g. "F-GKXA". None if no match."""
@@ -83,19 +107,13 @@ def resolve_icao24_by_registration(registration: str) -> str | None:
 
 def get_typecode(icao24: str) -> str | None:
     """Known typecode for this icao24, or None if absent from the database."""
-    db = _get_aircraft_db()
-    matches = db[db["icao24"] == icao24.strip().lower()]
-    if matches.empty or pd.isna(matches.iloc[0]["typecode"]) or matches.iloc[0]["typecode"] == "":
-        return None
-    return matches.iloc[0]["typecode"]
+    entry = _get_by_icao24().get(icao24.strip().lower())
+    return entry["typecode"] if entry else None
 
 
 def get_registration(icao24: str) -> str | None:
     """Known registration for this icao24, or None if absent from the
     database (mirrors get_typecode — used to show a readable identifier
     instead of the raw icao24, e.g. in the Aggregate view's search history)."""
-    db = _get_aircraft_db()
-    matches = db[db["icao24"] == icao24.strip().lower()]
-    if matches.empty or pd.isna(matches.iloc[0]["registration"]) or matches.iloc[0]["registration"] == "":
-        return None
-    return matches.iloc[0]["registration"]
+    entry = _get_by_icao24().get(icao24.strip().lower())
+    return entry["registration"] if entry else None

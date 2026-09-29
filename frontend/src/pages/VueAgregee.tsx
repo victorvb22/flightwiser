@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Search as SearchIcon, X } from "lucide-react";
 import { SplitFlapText } from "../components/SplitFlapText";
 import { PulseRing } from "../components/PulseRing";
@@ -8,14 +8,22 @@ import { HistogrammeScores } from "../components/visualisations/HistogrammeScore
 import { ScoreAnomalie, ANOMALY_TYPE_LABELS } from "../components/visualisations/ScoreAnomalie";
 import { JaugeEcart } from "../components/visualisations/JaugeEcart";
 import { DirectnessGauge } from "../components/visualisations/DirectnessGauge";
-import type { Categorie, HistoryFlightEntry } from "../services/api";
+import type { HistoryFlightEntry } from "../services/api";
 import { severityColor, worstSeverity } from "../lib/severity";
+import { CATEGORY_LABELS } from "../lib/categoryLabels";
 import { useAppData } from "../lib/AppDataContext";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useBackendWakeup } from "../lib/useBackendWakeup";
 
 type FeatureKey = "anomalie" | "ecart" | "directness";
 type SortKey = "identifiant" | "typecode" | "categorie" | "statut" | FeatureKey | "type_anomalie" | "calcule_le";
+
+// A stable reference for "no history loaded yet" -- historyState.entries ??
+// [] previously created a brand-new array literal on every render while
+// entries stayed null, which defeated the scoresByFeature/filtered
+// useMemos below (both depend on `history` by reference): every unrelated
+// re-render during the loading window recomputed both from scratch.
+const EMPTY_HISTORY: HistoryFlightEntry[] = [];
 
 // "normal" (the fourth label the classifier can return) deliberately never
 // shows here, same convention as ScoreAnomalie.tsx's own tag: it means the
@@ -46,16 +54,6 @@ const FEATURE_OPTIONS: { key: FeatureKey; label: string; good: 0 | 1 }[] = [
   { key: "ecart", label: "Trajectory deviation", good: 0 },
   { key: "directness", label: "Route directness", good: 1 },
 ];
-
-// Same keys/labels as Documentation.tsx's CATEGORY_LABELS — shown here so a
-// surprising score can be explained by which category the flight actually
-// landed in (cf. services/aircraft_category.categorize), not just guessed at.
-const CATEGORY_LABELS: Record<Categorie, string> = {
-  avion_ligne: "Airliner",
-  jet_affaire: "Business jet",
-  petit_avion: "Small aircraft",
-  helicoptere: "Helicopter",
-};
 
 function extractScore(entry: HistoryFlightEntry, key: FeatureKey): number | null {
   if (key === "anomalie") return entry.anomalie?.score ?? null;
@@ -183,9 +181,9 @@ export function VueAgregee() {
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  });
+  }, []);
   const { history: historyState, refreshHistory } = useAppData();
-  const history = historyState.entries ?? [];
+  const history = historyState.entries ?? EMPTY_HISTORY;
   const loadError = historyState.error;
   const historyLoading = historyState.loading;
   const [filterText, setFilterText] = useState("");
@@ -210,6 +208,13 @@ export function VueAgregee() {
   // history fetch is still in flight; if it resolves before the title
   // settles, indicatorKind below just never turns "loading" at all.
   const [titleSettled, setTitleSettled] = useState(false);
+  // Stable reference, not the inline arrow function this used to be passed
+  // as directly: SplitFlapText's own settle effect now depends on
+  // `onSettled` (cf. its own comment), and a fresh function identity every
+  // render would have restarted the title's flicker animation on every
+  // unrelated re-render of this page (typing a filter character, sorting,
+  // expanding a row) instead of only when its own text actually changes.
+  const handleTitleSettled = useCallback(() => setTitleSettled(true), []);
   const FADE_MS = 320;
   const indicatorKind: "loading" | null = titleSettled && historyLoading ? "loading" : null;
   const [renderedKind, setRenderedKind] = useState<"loading" | null>(null);
@@ -244,6 +249,16 @@ export function VueAgregee() {
     }
     return result;
   }, [history]);
+
+  // toBins() itself wasn't memoized: every unrelated re-render (typing a
+  // filter character, toggling a sort column, expanding a row) rebuilt all
+  // three histograms from scratch even though scoresByFeature — the only
+  // thing they actually depend on — hadn't changed.
+  const binsByFeature = useMemo(() => {
+    const result: Record<FeatureKey, number[]> = { anomalie: [], ecart: [], directness: [] };
+    for (const { key } of FEATURE_OPTIONS) result[key] = toBins(scoresByFeature[key]);
+    return result;
+  }, [scoresByFeature]);
 
   const filtered = useMemo(() => {
     let rows = history;
@@ -316,7 +331,7 @@ export function VueAgregee() {
           <SplitFlapText
             text="AGGREGATE VIEW"
             style={{ fontFamily: "var(--font-mono)", fontSize: 31, fontWeight: 700, letterSpacing: 2 }}
-            onSettled={() => setTitleSettled(true)}
+            onSettled={handleTitleSettled}
           />
           <span style={{ marginLeft: 12, width: PULSE_SLOT, height: PULSE_SLOT, flexShrink: 0, position: "relative" }} aria-hidden="true">
             {renderedKind && (
@@ -350,7 +365,7 @@ export function VueAgregee() {
             return (
               <div key={f.key} style={{ ...cardStyle, flex: "1 1 300px", minWidth: 0 }}>
                 {values.length > 0 ? (
-                  <HistogrammeScores title={f.label} counts={toBins(values)} good={f.good} highlightBin={highlightBin} />
+                  <HistogrammeScores title={f.label} counts={binsByFeature[f.key]} good={f.good} highlightBin={highlightBin} />
                 ) : (
                   <>
                     <p style={{ fontSize: 13, color: "#fff", opacity: 0.8, margin: "0 0 8px", textAlign: "center", textTransform: "uppercase", letterSpacing: 0.6 }}>{f.label}</p>

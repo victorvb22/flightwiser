@@ -43,11 +43,10 @@ def test_frontend_category_type_matches_backend_categories():
     assert _extract_categorie_type_members() == set(CATEGORIES)
 
 
-def test_vue_agregee_category_labels_match_backend_categories():
-    path = FRONTEND_SRC / "pages" / "VueAgregee.tsx"
-    assert _extract_category_labels_keys(path) == set(CATEGORIES)
-
-
-def test_documentation_category_labels_match_backend_categories():
-    path = FRONTEND_SRC / "pages" / "Documentation.tsx"
+def test_category_labels_match_backend_categories():
+    # CATEGORY_LABELS itself used to be defined separately (and identically)
+    # in both VueAgregee.tsx and Documentation.tsx -- now a single shared
+    # constant (frontend/src/lib/categoryLabels.ts) both pages import, so
+    # one check against its one real definition covers both.
+    path = FRONTEND_SRC / "lib" / "categoryLabels.ts"
     assert _extract_category_labels_keys(path) == set(CATEGORIES)
