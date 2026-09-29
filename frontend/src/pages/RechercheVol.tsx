@@ -621,14 +621,31 @@ export function RechercheVol() {
     closeMenuTimer.current = setTimeout(() => setShowRandomMenu(false), 200);
   }
 
+  // Guards against a real race: neither search path had one before, unlike
+  // every async refresh in AppDataContext.tsx (historyRequestId,
+  // exampleRequestId, anomalieParamsRequestId) which already uses this
+  // exact pattern for the identical problem. The input is never disabled
+  // while a search is in flight, so a slow search (e.g. "AB123" hitting a
+  // still-waking backend) can be followed by a second, faster one
+  // ("XY999", or a Random flight draw -- both paths share this one
+  // counter, since either can race the other) before the first resolves.
+  // Without a guard, whichever response happened to land LAST would win
+  // regardless of which was issued last, silently replacing a correct,
+  // already-displayed flight with a stale one. Only `etat` (what's shown)
+  // and the input's own text are guarded -- addToHistory/refreshHistory/
+  // refreshExample fire unconditionally below, since the flight really was
+  // searched and belongs in the history/pool state regardless of which
+  // response the UI ends up displaying.
+  const searchRequestId = useRef(0);
+
   async function rechercher(event: FormEvent) {
     event.preventDefault();
     const valeur = identifiant.trim();
     if (!valeur) return;
+    const requestId = ++searchRequestId.current;
     setEtat({ statut: "chargement" });
     try {
       const vol = await getFlight(valeur);
-      setEtat({ statut: "succes", vol });
       // addToHistory shows this flight in the Aggregate view immediately,
       // client-side, no extra request; refreshHistory's own (slower)
       // background fetch then reconciles it against the real server-side
@@ -641,8 +658,11 @@ export function RechercheVol() {
       // here since the backend is already known to be awake at this exact
       // moment (cf. AppDataContext.tsx's own docstring on exampleIdentifiant).
       refreshExample();
+      if (requestId !== searchRequestId.current) return;
+      setEtat({ statut: "succes", vol });
       setIdentifiant("");
     } catch (err) {
+      if (requestId !== searchRequestId.current) return;
       setEtat({ statut: "erreur", message: messageErreur(err) });
       setIdentifiant("");
     }
@@ -656,9 +676,15 @@ export function RechercheVol() {
     // random result that has nothing to do with it.
     setIdentifiant("");
     setRandomLoading(true);
+    const requestId = ++searchRequestId.current;
     setEtat({ statut: "chargement" });
     try {
       const vol = await getRandomFlight(randomFilter ?? undefined);
+      // Same reasoning as rechercher() above.
+      addToHistory(vol);
+      refreshHistory();
+      refreshExample();
+      if (requestId !== searchRequestId.current) return;
       setEtat({ statut: "succes", vol });
       // Deferred a frame (both here and in `finally` below) rather than set
       // in the same commit as the "succes" state above: that commit already
@@ -676,14 +702,17 @@ export function RechercheVol() {
       // back to normal Search-mode styling, rather than leaving Random
       // flight looking "still armed" for a search that already ran.
       requestAnimationFrame(() => setRandomFilter(null));
-      // Same reasoning as rechercher() above.
-      addToHistory(vol);
-      refreshHistory();
-      refreshExample();
     } catch (err) {
-      setEtat({ statut: "erreur", message: messageErreur(err) });
+      if (requestId === searchRequestId.current) {
+        setEtat({ statut: "erreur", message: messageErreur(err) });
+      }
     } finally {
-      requestAnimationFrame(() => setRandomLoading(false));
+      // A stale request's own randomLoading=false would otherwise flip the
+      // button back to "not loading" mid-way through a newer, still-running
+      // random draw.
+      if (requestId === searchRequestId.current) {
+        requestAnimationFrame(() => setRandomLoading(false));
+      }
     }
   }
 
