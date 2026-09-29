@@ -90,9 +90,24 @@ export function ScoreAnomalie({ anomalie, enVol = false }: { anomalie: Anomalie 
   }
 
   const color = severityColor(anomalie.score, 1);
-  const label = severityLabel(anomalie.score, 1);
+  // Tightened from the shared 0.35 default: a percentile rank has no fixed
+  // "normal" rate to calibrate against, so at 0.35 roughly a third of
+  // genuinely ordinary flights (different ATC routing, different weather,
+  // nothing wrong) landed below the cutoff purely from natural variance in
+  // how "textbook" a flight's profile looks -- tagged "anomaly" for being
+  // merely less typical, not because anything was actually found. 0.1
+  // keeps the tag for the genuinely unusual tail instead of a third of
+  // ordinary traffic.
+  const label = severityLabel(anomalie.score, 1, 0.1);
   const isAnomaly = label === "anomaly";
   const Icon = isAnomaly ? AlertTriangle : CheckCircle2;
+  // "Anomaly" (the raw severityLabel value, still used above for the icon/
+  // anomalyTypeLabel logic) reads as a confirmed finding -- this score is a
+  // relative ranking against past flights, not a diagnosis (cf. the
+  // paragraph below, and the source model's own docstring: there are no
+  // real anomaly labels in this dataset to calibrate an absolute rate
+  // against). "Atypical" says exactly what's actually known.
+  const displayLabel = label === "anomaly" ? "Atypical" : label;
   // Shown only once the score itself is flagged, and only when it isn't
   // "normal" — a flagged score whose type comes back "normal" means none of
   // these three known patterns match, which isn't the same as nothing to
@@ -105,7 +120,7 @@ export function ScoreAnomalie({ anomalie, enVol = false }: { anomalie: Anomalie 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
           <Icon size={19} color={color} />
-          <span style={{ fontWeight: 700, fontSize: 17.5, color, textTransform: "capitalize" }}>{label}</span>
+          <span style={{ fontWeight: 700, fontSize: 17.5, color, textTransform: "capitalize" }}>{displayLabel}</span>
           {anomalyTypeLabel && (
             <span
               title="Best-effort guess from a separate model, trained only on synthetic examples — never a confirmed real one. Treat as indicative, not a diagnosis."
@@ -125,7 +140,7 @@ export function ScoreAnomalie({ anomalie, enVol = false }: { anomalie: Anomalie 
           )}
         </div>
         <p style={{ fontSize: 13, color: "var(--text-faint)", margin: "0 0 10px", lineHeight: 1.5 }}>
-          Likelihood rank against normal flights — the lower it is, the more this flight departs from typical behaviour.
+          Likelihood rank against past flights, not a confirmed issue — the lower it is, the less this flight's profile resembles typical behaviour for its category.
         </p>
         {anomalie.out_of_training_scope && (
           <p

@@ -25,10 +25,21 @@ export function severityColor(score: number, good: 0 | 1 = 1): string {
   return `hsl(${severityHue(score, good).toFixed(0)} 78% ${(52 + t * 6).toFixed(0)}%)`;
 }
 
-export function severityLabel(score: number, good: 0 | 1 = 1): string {
+/** `anomalyAt` (default 0.35, matching the original single shared cutoff)
+ * lets one caller tighten just its own "anomaly" boundary without moving
+ * the other two callers' (JaugeEcart.tsx, DirectnessGauge.tsx) — cf.
+ * ScoreAnomalie.tsx's own comment on why its 0.35 default read as
+ * over-eager (roughly a third of genuinely normal flights land below it
+ * purely from the percentile-rank scoring having no fixed "normal" rate to
+ * calibrate against, not a real fault rate). ecart_trajectoire/directness
+ * aren't percentile ranks the same way (a deviation-from-simulation score,
+ * a distance ratio) and haven't been shown to have the same problem, so
+ * they keep the original default rather than being changed on the same
+ * unverified assumption. */
+export function severityLabel(score: number, good: 0 | 1 = 1, anomalyAt = 0.35): string {
   const t = normalized(score, good);
   if (t >= 0.65) return "normal";
-  if (t >= 0.35) return "worth watching";
+  if (t >= anomalyAt) return "worth watching";
   return "anomaly";
 }
 

@@ -171,17 +171,31 @@ export function VueAgregee() {
   // fill the table's width — it would run off-screen. On mobile it's sized
   // from the scroll box's own visible width instead, and stays put
   // (sticky) while the table scrolls sideways underneath.
-  const scrollBoxRef = useRef<HTMLDivElement>(null);
+  //
+  // A callback ref, not useRef + an effect with an empty deps array: the
+  // scroll box's own <div> is itself conditionally rendered (only once
+  // history.length > 0 && filtered.length > 0, below) -- it doesn't exist
+  // in the DOM yet on the very first render, while the history is still
+  // loading. A plain useRef + `useEffect(..., [])` only ever runs once,
+  // right after that first render, finds scrollBoxRef.current still null,
+  // and exits without ever attaching the observer -- with nothing to
+  // retry it once the div actually mounts a moment later, leaving
+  // scrollBoxWidth permanently stuck at 0 and collapsing the mobile
+  // expanded-row panel to zero width. A callback ref instead fires exactly
+  // when React actually attaches (or detaches) the node, whatever the
+  // reason, so the observer is set up (and re-set-up, if the div is ever
+  // unmounted and remounted again, e.g. a filter briefly matching nothing)
+  // at the right time regardless.
+  const [scrollBoxEl, setScrollBoxEl] = useState<HTMLDivElement | null>(null);
   const [scrollBoxWidth, setScrollBoxWidth] = useState(0);
   useEffect(() => {
-    const el = scrollBoxRef.current;
-    if (!el) return;
-    const measure = () => setScrollBoxWidth(el.clientWidth);
+    if (!scrollBoxEl) return;
+    const measure = () => setScrollBoxWidth(scrollBoxEl.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(el);
+    observer.observe(scrollBoxEl);
     return () => observer.disconnect();
-  }, []);
+  }, [scrollBoxEl]);
   const { history: historyState, refreshHistory } = useAppData();
   const history = historyState.entries ?? EMPTY_HISTORY;
   const loadError = historyState.error;
@@ -412,7 +426,7 @@ export function VueAgregee() {
         ) : filtered.length === 0 ? (
           <p style={{ color: "var(--text-faint)", fontSize: 14.5, margin: 0 }}>No flight matches this filter.</p>
         ) : (
-          <div ref={scrollBoxRef} style={{ maxHeight: 560, overflowY: "auto" }}>
+          <div ref={setScrollBoxEl} style={{ maxHeight: 560, overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>
