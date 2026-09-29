@@ -53,3 +53,18 @@ def test_great_circle_too_short_returns_none():
     tiny_offset = (MIN_GREAT_CIRCLE_KM / 111.0) / 10  # a fraction of a km in degrees
     waypoints = [_waypoint(48.0, 2.0 + i * tiny_offset) for i in range(6)]
     assert extract_route_directness(waypoints) is None
+
+
+def test_a_none_position_is_filtered_rather_than_crashing():
+    # Real bug class: no caller today passes an unfiltered None position
+    # (drop_missing_position always runs first), but this function had no
+    # defence of its own, unlike anomaly_type.py's identical feature
+    # extraction. A None slipping in (endpoint or middle) must not reach
+    # haversine_km's np.radians(None). One extra point beyond the
+    # straight-line test's 5, so filtering the None one out still clears
+    # MIN_POINTS.
+    waypoints = [_waypoint(48.0 + i * 0.5, 2.0 + i * 0.5) for i in range(6)]
+    waypoints[2] = {"lat": None, "lon": None}
+    ratio = extract_route_directness(waypoints)
+    assert ratio is not None
+    assert ratio > 0.99

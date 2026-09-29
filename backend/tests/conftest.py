@@ -56,6 +56,8 @@ def test_pool(monkeypatch):
     monkeypatch.setattr(flight_pool, "POOL_PATH", FIXTURES_DIR / "flight_pool_sample.jsonl")
     monkeypatch.setattr(flight_pool, "_pool", None)
     monkeypatch.setattr(flight_pool, "_by_icao24", None)
+    monkeypatch.setattr(flight_pool, "_by_identifiant", None)
     yield
     flight_pool._pool = None
     flight_pool._by_icao24 = None
+    flight_pool._by_identifiant = None

@@ -29,6 +29,7 @@ POOL_PATH = REFERENCE_DIR / "flight_pool.jsonl"
 
 _pool: list[dict[str, Any]] | None = None
 _by_icao24: dict[str, dict[str, Any]] | None = None
+_by_identifiant: dict[str, dict[str, Any]] | None = None
 
 
 def _load_pool() -> list[dict[str, Any]]:
@@ -61,6 +62,28 @@ def _get_by_icao24() -> dict[str, dict[str, Any]]:
     return _by_icao24
 
 
+def _get_by_identifiant() -> dict[str, dict[str, Any]]:
+    """normalized identifiant -> pool entry, built once. Unlike icao24, a
+    callsign isn't guaranteed unique across the pool: real airline flight
+    numbers get reused by different physical aircraft over the many separate
+    sessions scripts/collect_opensky_pool.py has run across (real-world
+    reuse, not a collection bug) -- on a collision, the most recently
+    collected entry (_collected_at, an ISO-8601 string, sorts correctly as
+    text) wins, deterministically, rather than whichever happened to be
+    read first from the pool file (an accident of write order across
+    collection sessions, not a meaningful choice)."""
+    global _by_identifiant
+    if _by_identifiant is None:
+        by_identifiant: dict[str, dict[str, Any]] = {}
+        for entry in _get_pool():
+            key = entry["identifiant"].strip().upper()
+            existing = by_identifiant.get(key)
+            if existing is None or entry["_collected_at"] > existing["_collected_at"]:
+                by_identifiant[key] = entry
+        _by_identifiant = by_identifiant
+    return _by_identifiant
+
+
 def find_by_icao24(icao24: str) -> dict[str, Any] | None:
     """The pool entry for this exact icao24, if any — used to recover the
     callsign a cached flight was originally served under (services/
@@ -81,13 +104,18 @@ def find_by_identifiant(identifiant: str) -> dict[str, Any] | None:
     rather than risking going stale if the aircraft database is
     regenerated."""
     normalized = identifiant.strip().upper()
+    by_identifiant = _get_by_identifiant().get(normalized)
+    if by_identifiant is not None:
+        return by_identifiant
+    by_icao24 = _get_by_icao24().get(normalized.lower())
+    if by_icao24 is not None:
+        return by_icao24
+    # Registration can't be pre-indexed the same way -- it's derived from
+    # the icao24 via a separate lookup (services/aircraft_database.py), not
+    # part of the pool entry itself -- but this is only reached once neither
+    # the (indexed, O(1)) identifiant nor icao24 checks above matched.
     for entry in _get_pool():
-        icao24 = entry["_icao24"]
-        if entry["identifiant"].strip().upper() == normalized:
-            return entry
-        if icao24.strip().upper() == normalized:
-            return entry
-        registration = get_registration(icao24)
+        registration = get_registration(entry["_icao24"])
         if registration and registration.strip().upper() == normalized:
             return entry
     return None

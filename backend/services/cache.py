@@ -70,9 +70,19 @@ def get_all_cached_flights() -> list[dict[str, Any]]:
     offset = 0
     try:
         while True:
+            # id.asc as a tiebreaker: calcule_le alone isn't unique (several
+            # rows can share a timestamp -- a bulk backfill, or a few
+            # searches landing in the same second), and Postgres/PostgREST
+            # don't guarantee a stable relative order for tied rows across
+            # separate paginated queries without one. Without it, a tied row
+            # could shift across the offset boundary between two Range
+            # requests -- appearing on both pages, or (the worse direction)
+            # skipped by both and silently missing from the result. id (the
+            # primary key) is always unique, so this pins a single,
+            # repeatable order regardless of ties.
             response = requests.get(
                 _TABLE_URL,
-                params={"select": f"id,{','.join(_CACHED_FIELDS)},calcule_le", "order": "calcule_le.desc"},
+                params={"select": f"id,{','.join(_CACHED_FIELDS)},calcule_le", "order": "calcule_le.desc,id.asc"},
                 headers={**_HEADERS, "Range-Unit": "items", "Range": f"{offset}-{offset + _PAGE_SIZE - 1}"},
                 timeout=30,
             )

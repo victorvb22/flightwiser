@@ -48,7 +48,9 @@ MIN_VERTRATES = 5
 # Cf. the source notebook's "Real-Time Inference" section: beyond this gap
 # between two points in the approach zone, the computed altitude rebound
 # reflects how the points are spaced rather than a real climb-back — set to
-# 0 rather than producing a misleading number.
+# 0 rather than producing a misleading number. Reused below for
+# heading_changes_count, for the identical reason: two cap readings this far
+# apart in time reflect a gap in reporting, not one continuous turn.
 MAX_APPROACH_GAP_S = 300
 # Last 30% of the trajectory — same split as the source project for the
 # approach zone (feature alt_rebound_max).
@@ -61,7 +63,7 @@ MAX_PLAUSIBLE_ALTITUDE_M = 15000
 
 def _compute_features(trajectoire: list[dict], duration_min: float) -> dict[str, float] | None:
     alts = [w["altitude"] for w in trajectoire if w["altitude"] is not None and 0 <= w["altitude"] <= MAX_PLAUSIBLE_ALTITUDE_M]
-    headings = [w["cap"] for w in trajectoire if w["cap"] is not None]
+    headings = [(w["timestamp"], w["cap"]) for w in trajectoire if w["cap"] is not None]
     vertrates = [w["vitesse_verticale"] for w in trajectoire if w["vitesse_verticale"] is not None]
     if len(alts) < MIN_ALTITUDES or len(vertrates) < MIN_VERTRATES:
         return None
@@ -82,10 +84,19 @@ def _compute_features(trajectoire: list[dict], duration_min: float) -> dict[str,
     vrate_cruise_std = float(np.std(cruise_vrates)) if len(cruise_vrates) >= 3 else 0.0
 
     # Heading changes > 30° — handles the 0/360 wrap-around (e.g. 355° -> 5°
-    # = a 10° gap, not 350°).
+    # = a 10° gap, not 350°). Skips a pair spanning more than
+    # MAX_APPROACH_GAP_S: several waypoints missing `cap` in a row (common in
+    # real ADS-B data) would otherwise compare two headings minutes apart as
+    # if they were consecutive, registering one large instantaneous delta
+    # (or merging two real, separate turns into one) instead of leaving the
+    # gap uncounted.
     heading_changes = 0
     for i in range(1, len(headings)):
-        delta = abs(headings[i] - headings[i - 1])
+        t_prev, cap_prev = headings[i - 1]
+        t_cur, cap_cur = headings[i]
+        if t_cur - t_prev > MAX_APPROACH_GAP_S:
+            continue
+        delta = abs(cap_cur - cap_prev)
         delta = min(delta, 360 - delta)
         if delta > 30:
             heading_changes += 1

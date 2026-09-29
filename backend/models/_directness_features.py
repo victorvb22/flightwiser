@@ -26,15 +26,21 @@ MIN_GREAT_CIRCLE_KM = 5.0
 
 
 def extract_route_directness(waypoints: list[dict]) -> float | None:
-    """None if too few points, or if the great-circle distance is too short
-    for a reliable ratio (cf. MIN_GREAT_CIRCLE_KM) — not an error in itself,
-    just a flight for which this particular signal isn't usable (the other
-    models stay independent of this one)."""
-    if len(waypoints) < MIN_POINTS:
+    """None if too few usable points, or if the great-circle distance is too
+    short for a reliable ratio (cf. MIN_GREAT_CIRCLE_KM) — not an error in
+    itself, just a flight for which this particular signal isn't usable (the
+    other models stay independent of this one). Every known caller today
+    already runs drop_missing_position first (services/trajectory_cleaning.py),
+    so a None lat/lon isn't reachable in practice yet -- filtered here anyway,
+    same as models/anomaly_type.py's own feature extraction, rather than
+    leaving this function's only defense against one be "every future caller
+    happens to remember to filter first"."""
+    usable = [w for w in waypoints if w["lat"] is not None and w["lon"] is not None]
+    if len(usable) < MIN_POINTS:
         return None
 
-    lats = [w["lat"] for w in waypoints]
-    lons = [w["lon"] for w in waypoints]
+    lats = [w["lat"] for w in usable]
+    lons = [w["lon"] for w in usable]
 
     great_circle_km = float(haversine_km(lats[0], lons[0], lats[-1], lons[-1]))
     if great_circle_km < MIN_GREAT_CIRCLE_KM:

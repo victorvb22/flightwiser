@@ -34,6 +34,19 @@ FEATURES = [
 LOG1P_FEATURES = {"duration_min"}
 
 
+def _valid(value) -> bool:
+    """Not None, and not NaN. `is not None` alone lets a NaN through: JSON's
+    `json.dumps`/`json.loads` round-trips a Python float('nan') as a literal
+    (non-standard, but accepted) `NaN` token, unlike the CSV path, which is
+    scrubbed of bare NaN strings during preprocessing -- so this is reachable
+    from a cache round trip in a way the CSV training path never sees.
+    Unfiltered, a NaN here silently propagates through np.mean/max/min into
+    every downstream feature, then the model's z-score/log-likelihood, then
+    np.interp(nan, ...) -> a NaN score returned to the API instead of ever
+    raising."""
+    return value is not None and not np.isnan(value)
+
+
 def extract_raw_features(waypoints: list[dict]) -> dict[str, float] | None:
     """Summary features, before transformation. None if the flight doesn't
     have enough points or is entirely missing one of the required
@@ -41,9 +54,9 @@ def extract_raw_features(waypoints: list[dict]) -> dict[str, float] | None:
     if len(waypoints) < MIN_POINTS:
         return None
 
-    speeds = [w["vitesse"] for w in waypoints if w.get("vitesse") is not None]
-    altitudes = [w["altitude"] for w in waypoints if w.get("altitude") is not None]
-    vertical_rates = [w["vitesse_verticale"] for w in waypoints if w.get("vitesse_verticale") is not None]
+    speeds = [w["vitesse"] for w in waypoints if _valid(w.get("vitesse"))]
+    altitudes = [w["altitude"] for w in waypoints if _valid(w.get("altitude"))]
+    vertical_rates = [w["vitesse_verticale"] for w in waypoints if _valid(w.get("vitesse_verticale"))]
     if not speeds or not altitudes or not vertical_rates:
         return None
 
