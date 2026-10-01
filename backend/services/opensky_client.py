@@ -434,6 +434,12 @@ class OpenSkyApi:
         self._last_requests = defaultdict(lambda: 0)
         self._session = requests.Session()
         self._session.headers.update(_relay_headers())
+        # Set on every _get_json call, success or not -- the only way for a
+        # caller to tell a 429 (quota exhausted) apart from a 404 (nothing to
+        # report for this query), since _get_json itself collapses both to
+        # the same `None` return value (cf. collect_opensky_pool.py, the
+        # first caller that actually needed the distinction).
+        self.last_status_code: int | None = None
 
     @classmethod
     def from_settings(cls) -> "OpenSkyApi":
@@ -480,6 +486,7 @@ class OpenSkyApi:
             params=params,
             timeout=15.00,
         )
+        self.last_status_code = r.status_code
         if r.status_code == 200:
             self._last_requests[callee] = time.time()
             return r.json()
