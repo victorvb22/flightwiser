@@ -1,13 +1,14 @@
 """One-off trim of the raw OpenSky collection file (scripts/collect_opensky_pool.py's
-own output) down to a fixed total size, by randomly dropping airborne
-entries only -- landed ones are never touched, cf. that script's own
-POOL_CAP/LANDED_TARGET: the whole point of the pool going forward is to grow
-the landed share at airborne's expense, at a fixed total, and this is the
-one-time correction needed to actually land on that fixed total before the
-capped/evicting collection loop takes over.
+own output) down to fixed landed/airborne targets, by randomly dropping
+entries from each category independently -- a straight random sample within
+each category, not a priority order between them. Used whenever the built
+flight_pool.jsonl's in-memory footprint (services/flight_pool.py, loaded
+whole into the Render backend's process) needs to shrink to stay inside the
+instance's memory ceiling; the specific targets are a deliberate per-incident
+call, not a fixed policy, so both categories are explicit arguments rather
+than one total plus an airborne-only default.
 
-Usage: python scripts/trim_pool_to_target.py [target_total]
-Default target_total: 3000 (collect_opensky_pool.py's own POOL_CAP).
+Usage: python scripts/trim_pool_to_target.py <landed_target> <airborne_target>
 """
 
 import json
@@ -23,7 +24,11 @@ def main() -> None:
         print(f"Not found: {RAW_PATH} (has the collection script run yet?)")
         return
 
-    target_total = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
+    if len(sys.argv) != 3:
+        print("Usage: python scripts/trim_pool_to_target.py <landed_target> <airborne_target>")
+        return
+    landed_target = int(sys.argv[1])
+    airborne_target = int(sys.argv[2])
 
     entries: list[dict] = []
     with open(RAW_PATH, encoding="utf-8") as f:
@@ -37,25 +42,20 @@ def main() -> None:
     airborne = [e for e in entries if e.get("statut") != "atterri"]
     print(f"Before: {len(entries)} flight(s) - {len(airborne)} airborne, {len(landed)} landed")
 
-    to_remove = len(entries) - target_total
-    if to_remove <= 0:
-        print(f"Already at or below {target_total} -- nothing to remove.")
-        return
-    if to_remove > len(airborne):
-        print(f"Only {len(airborne)} airborne flight(s) available, can't remove {to_remove} without touching landed ones -- aborting.")
+    if landed_target > len(landed) or airborne_target > len(airborne):
+        print(f"Can't reach {landed_target} landed / {airborne_target} airborne -- only {len(landed)} landed / {len(airborne)} airborne available.")
         return
 
+    random.shuffle(landed)
     random.shuffle(airborne)
-    kept_airborne = airborne[to_remove:]
-    removed = airborne[:to_remove]
+    kept = landed[:landed_target] + airborne[:airborne_target]
 
-    kept = landed + kept_airborne
     with open(RAW_PATH, "w", encoding="utf-8") as f:
         for entry in kept:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    print(f"Removed {len(removed)} random airborne flight(s).")
-    print(f"After: {len(kept)} flight(s) - {len(kept_airborne)} airborne, {len(landed)} landed")
+    print(f"Removed {len(landed) - landed_target} random landed and {len(airborne) - airborne_target} random airborne flight(s).")
+    print(f"After: {len(kept)} flight(s) - {airborne_target} airborne, {landed_target} landed")
 
 
 if __name__ == "__main__":
